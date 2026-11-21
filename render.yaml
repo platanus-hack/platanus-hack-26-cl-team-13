@@ -1,1 +1,78 @@
-services: []
+# Blueprint de Render. Render solo conecta repos propios: se despliega desde el espejo
+# personal del repo (ver README, "Deploying & integrations").
+# Todo en la misma región: el orquestador habla con Postgres por la red privada de Render.
+
+databases:
+  # Corridas, eventos, filtraciones, diffs y costo (PostgresStore). Sin acceso público.
+  - name: gemelo-db
+    databaseName: gemelo
+    user: gemelo
+    plan: basic-256mb
+    region: oregon
+    ipAllowList: []          # solo red privada
+
+services:
+  # Gateway del modelo (P2). Guarda la key; las cajas solo reciben un token por corrida con tope.
+  # El Dockerfile.gateway llega con la rama del gateway.
+  - type: web
+    name: gemelo-gateway
+    runtime: docker
+    region: oregon
+    plan: starter            # el plan gratis duerme y se pierden los tokens en memoria
+    dockerfilePath: ./services/api/Dockerfile.gateway
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: GATEWAY_UPSTREAM_URL
+        sync: false          # https://llm.hack.platan.us/t/<phk_token>/anthropic
+      - key: GATEWAY_UPSTREAM_API_KEY
+        sync: false
+      - key: GATEWAY_ADMIN_TOKEN
+        generateValue: true  # el orquestador lo toma de aquí
+      - key: GATEWAY_MODEL
+        value: claude-haiku-5-5
+
+  - type: web
+    name: gemelo-api
+    runtime: docker
+    region: oregon
+    plan: starter            # el plan gratis duerme el servicio y se pierden corridas en curso
+    dockerfilePath: ./services/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: GEMELO_SANDBOX_PROVIDER
+        value: e2b
+      - key: GEMELO_ENV_NAME
+        value: render
+      - key: GEMELO_AGENT
+        value: scripted      # claude cuando el gateway de P2 esté arriba
+      - key: GEMELO_PUBLIC_BASE_URL
+        sync: false          # https://gemelo-api.onrender.com (host exacto, sin comodines)
+      - key: GEMELO_GATEWAY_STUB
+        value: "true"        # false cuando gemelo-gateway tenga la key del upstream
+      - key: GEMELO_GATEWAY_URL
+        sync: false          # https://gemelo-gateway.onrender.com
+      - key: GEMELO_GATEWAY_URL_SANDBOX
+        sync: false          # la misma URL pública HTTPS: host exacto y puerto 443 para el filtro de E2B
+      - key: GEMELO_GATEWAY_ADMIN_TOKEN
+        fromService:
+          type: web
+          name: gemelo-gateway
+          envVarKey: GATEWAY_ADMIN_TOKEN
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gemelo-db
+          property: connectionString   # cadena interna, por red privada
+      - key: GEMELO_ATTACKER_URL_SANDBOX
+        sync: false
+      - key: GEMELO_WEBHOOK_SECRET
+        generateValue: true
+      - key: GEMELO_API_TOKEN
+        generateValue: true
+      - key: GEMELO_CORS_ORIGINS
+        sync: false          # URL de la web de P4
+      - key: E2B_API_KEY
+        sync: false

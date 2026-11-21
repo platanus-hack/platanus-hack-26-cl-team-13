@@ -4,3 +4,9 @@ node_modules/
 __pycache__/
 *.pyc
 .venv/
+
+# Gemelo
+secrets/
+.env.*
+!.env.example
+cassettes/*.json

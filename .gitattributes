@@ -1,0 +1,8 @@
+# Finales de línea LF en todo el repo: los scripts y archivos se copian a contenedores Linux.
+* text=auto eol=lf
+
+# Binarios
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary

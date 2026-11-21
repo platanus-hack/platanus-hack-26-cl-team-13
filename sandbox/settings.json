@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "python3 /opt/gemelo/hooks/hook.py pre", "timeout": 30 }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "python3 /opt/gemelo/hooks/hook.py post", "timeout": 30 }] }
+    ]
+  }
+}
