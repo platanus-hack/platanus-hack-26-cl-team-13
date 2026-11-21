@@ -2,7 +2,7 @@
 
 ## Why
 
-Todos los carriles (sin defensa, monitor, FIDES y Gemelo) corren Claude Code real dentro de sandboxes desechables, y la garantía del Gemelo depende de que la red del gemelo alto **no** pueda salir a internet. Hoy `services/api/gemelo/providers/` solo tiene stubs: sin una capa de sandbox con aislamiento de red verificable no se puede construir ni probar ningún carril. Es el primer bloque de la fase 0 (checkpoint h10).
+Todos los carriles (sin defensa, monitor, FIDES y Gemelo) corren Claude Code real dentro de sandboxes desechables, y la garantía del Gemelo depende de que la red del gemelo bajo **no** pueda salir a internet. Hoy `services/api/gemelo/providers/` solo tiene stubs: sin una capa de sandbox con aislamiento de red verificable no se puede construir ni probar ningún carril. Es el primer bloque de la fase 0 (checkpoint h10).
 
 ## What Changes
 

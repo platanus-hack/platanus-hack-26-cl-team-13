@@ -4,8 +4,8 @@ from urllib.parse import quote
 
 import pytest
 
-from gemelo import scanner
-from gemelo.honeytokens import GENERATORS, SecretRegistry
+from aigis import scanner
+from aigis.honeytokens import GENERATORS, SecretRegistry
 
 SECRET = "sk_live_" + "Ab3dE6gH9jK2mN5pQ8sT1vW4"
 PAIRS = [("sec_1", SECRET)]
@@ -58,11 +58,11 @@ def test_redact_removes_every_form():
 def test_registry_unique_per_box_and_pools():
     reg = SecretRegistry()
     spec = [("STRIPE_API_KEY", "stripe"), ("AWS_ACCESS_KEY_ID", "aws_access_key")]
-    lo = reg.assign("r1", "gemelo", "bajo", spec)
     hi = reg.assign("r1", "gemelo", "alto", spec)
-    assert {s.pool for s in lo} == {"A"} and {s.pool for s in hi} == {"B"}
-    assert not {s.value for s in lo} & {s.value for s in hi}
-    assert hi[0].value.startswith("sk_live_") and hi[1].value.startswith("AKIA") and len(hi[1].value) == 20
+    lo = reg.assign("r1", "gemelo", "bajo", spec)
+    assert {s.pool for s in hi} == {"A"} and {s.pool for s in lo} == {"B"}
+    assert not {s.value for s in hi} & {s.value for s in lo}
+    assert lo[0].value.startswith("sk_live_") and lo[1].value.startswith("AKIA") and len(lo[1].value) == 20
 
 
 def test_generators_have_real_shape():

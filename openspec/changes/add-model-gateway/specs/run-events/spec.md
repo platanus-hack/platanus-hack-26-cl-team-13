@@ -10,8 +10,8 @@ Definir un formato único de eventos por corrida para que el orquestador, los ca
 Todo evento de una corrida SHALL incluir: id de corrida, carril, gemelo (si aplica), número de paso, tipo, marca de tiempo y un payload propio del tipo. Los eventos MUST NOT contener API keys ni tokens del gateway.
 
 #### Scenario: Evento de comando
-- **WHEN** el agente del carril Gemelo, gemelo bajo, ejecuta un comando en su paso 3
-- **THEN** se emite un evento con carril `gemelo`, gemelo `bajo`, paso 3, tipo de comando y el comando en el payload
+- **WHEN** el agente del carril Gemelo, gemelo alto, ejecuta un comando en su paso 3
+- **THEN** se emite un evento con carril `gemelo`, gemelo `alto`, paso 3, tipo de comando y el comando en el payload
 
 ### Requirement: Tipos de evento mínimos
 El sistema SHALL emitir al menos estos tipos: inicio y fin de corrida, llamada al modelo, comando del agente y su resultado, intento de red bloqueado, detección de honeytoken o de secreto, y corte (por presupuesto, tope de pasos o red).

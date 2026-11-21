@@ -35,7 +35,7 @@ Ver proposal.md (Why). El servidor atacante corre como servicio aparte en Render
 - [Falsos positivos en fragmentos cortos] → largo mínimo de fragmento y solo valores conocidos de la corrida.
 - [La alerta de canary tarda o no llega] → disparo por el atacante y alerta grabada de respaldo.
 - [Un scanner público encuentra canary tokens en el repo] → los canary tokens nunca se versionan; test que lo verifica.
-- [El agente exfiltra por DNS u otro dominio] → no se detecta en este cambio; en el Gemelo la garantía se mantiene igual porque el bajo solo tiene honeytokens.
+- [El agente exfiltra por DNS u otro dominio] → no se detecta en este cambio; en el Gemelo la garantía se mantiene igual porque el alto solo tiene honeytokens.
 
 ## Open Questions
 

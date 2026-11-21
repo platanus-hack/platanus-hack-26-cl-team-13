@@ -1,6 +1,6 @@
-# Orquestador de Gemelo para Render (o cualquier host de contenedores).
+# Orquestador de AIgis para Render (o cualquier host de contenedores).
 # Contexto de build: raíz del repo, porque necesita tasks/ y sandbox/.
-#   docker build -f services/api/Dockerfile -t gemelo-api .
+#   docker build -f services/api/Dockerfile -t aigis-api .
 # En Render las cajas corren en E2B: Render no admite Docker dentro del contenedor.
 FROM python:3.12-slim-bookworm
 
@@ -14,17 +14,17 @@ WORKDIR /app/services/api
 COPY services/api/pyproject.toml services/api/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY services/api/gemelo ./gemelo
+COPY services/api/aigis ./aigis
 COPY tasks /app/tasks
 COPY sandbox /app/sandbox
 
 ENV PATH="/app/services/api/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    GEMELO_SANDBOX_PROVIDER=e2b \
-    GEMELO_DEV=false
+    AIGIS_SANDBOX_PROVIDER=e2b \
+    AIGIS_DEV=false
 
 RUN useradd --create-home --uid 10001 app
 USER app
 
 EXPOSE 8000
-CMD ["sh", "-c", "uvicorn gemelo.app:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers"]
+CMD ["sh", "-c", "uvicorn aigis.app:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers"]

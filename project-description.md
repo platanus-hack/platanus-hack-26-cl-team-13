@@ -12,20 +12,20 @@ Las defensas actuales vigilan cada acción y tratan de adivinar si es un robo. S
 
 Para robar una llave, el agente necesita dos cosas a la vez: **tener la llave y tener salida a internet**. AIgis hace que nunca se junten. Corre dos copias del mismo agente, con la misma tarea y el mismo repo:
 
-| | Gemelo bajo | Gemelo alto |
+| | Gemelo alto | Gemelo bajo |
 |---|---|---|
 | Secretos | Solo **honeytokens** (llaves falsas con formato real) | Las **llaves verdaderas** |
 | Red | Internet abierta | Sin internet: solo el gateway del modelo y una allowlist |
 | Si intenta robar | Roba una llave falsa que lo delata | La red lo bloquea (E2B / Docker), no nuestro código |
 
-**Lo que aceptamos:** el `git diff` del gemelo alto, que tuvo las llaves verdaderas e hizo bien la tarea, más lo que el gemelo bajo mandó a internet, que nunca contiene un secreto verdadero. Nadie tiene que decidir si un `curl` es malicioso, por eso funciona aunque el ataque esté muy bien disfrazado.
+**Lo que aceptamos:** el `git diff` del gemelo bajo, que tuvo las llaves verdaderas e hizo bien la tarea, más lo que el gemelo alto mandó a internet, que nunca contiene un secreto verdadero. Nadie tiene que decidir si un `curl` es malicioso, por eso funciona aunque el ataque esté muy bien disfrazado.
 
 Es la primera implementación para agentes de *secure multi-execution* (SME), una técnica clásica de flujo de información que un preprint reciente (Adams, 2026) probó formalmente para modelos de lenguaje.
 
 ### Capas adicionales
 
-- **Escaneo del diff:** antes de aceptar el resultado del gemelo alto, buscamos los secretos en claro, base64 y hex, para que no salgan escondidos en el código.
-- **Vigilante de integridad:** dentro del gemelo alto, un ledger con taint, una política y un monitor Haiku revisan las acciones de riesgo (borrar archivos, tocar tests, usar la llave contra la allowlist) cuando el contexto está contaminado. Esta capa es heurística y lo decimos así.
+- **Escaneo del diff:** antes de aceptar el resultado del gemelo bajo, buscamos los secretos en claro, base64 y hex, para que no salgan escondidos en el código.
+- **Vigilante de integridad:** dentro del gemelo bajo, un ledger con taint, una política y un monitor Haiku revisan las acciones de riesgo (borrar archivos, tocar tests, usar la llave contra la allowlist) cuando el contexto está contaminado. Esta capa es heurística y lo decimos así.
 - **Honeytokens con atribución:** el servidor del atacante decodifica lo que recibe (en claro, base64, hex o fragmentado) y atribuye la filtración al carril, gemelo y paso. Los canary tokens además avisan si alguien intenta usarlos.
 - **Gateway del modelo:** la API key nunca entra a un sandbox. Cada corrida recibe un token propio que expira al terminar y tiene tope en USD. Graba y reproduce corridas para la demo sin gastar.
 - **Secretos sintéticos:** las "llaves verdaderas" de la demo nunca son credenciales reales.

@@ -44,7 +44,7 @@ Ver proposal.md (Why). Render no permite contenedores privilegiados ni Docker de
 
 **Decisiones tomadas al implementar el provider local y el de E2B** (21 nov, verificadas contra docs.e2b.dev y SDK e2b 2.64.0):
 - Interfaz asíncrona y `create(spec)`: el orquestador corre cinco cajas en paralelo y copia repo, ataque y secretos en orden, con los secretos fuera del commit base.
-- Local: una red `internal` por caja con el proxy adentro, en vez de una red interna compartida. Con la red compartida el gemelo alto podía pasarle el secreto al bajo por IP interna. E2B ya aísla cada sandbox, así los dos providers quedan equivalentes.
+- Local: una red `internal` por caja con el proxy adentro, en vez de una red interna compartida. Con la red compartida el gemelo bajo podía pasarle el secreto al alto por IP interna. E2B ya aísla cada sandbox, así los dos providers quedan equivalentes.
 - Local: el resolver embebido de Docker no responde nombres externos en redes `internal` (verificado con un test), y el proxy rechaza los destinos fuera de la allowlist antes de resolverlos.
 - Plantilla de una sola etapa (Node 22 desde el tarball oficial, verificado con SHASUMS256): E2B construye desde Dockerfile pero no admite multi-stage.
 - Mapeo de red en E2B: `open` sin `network`; `isolated(lista)` como `allow_out=[gateway, hooks, *lista]`, `deny_out=["0.0.0.0/0"]`, `dns_servers=[]`; `gateway_only` igual con solo gateway y hooks. El corte en caliente usa `update_network` con la configuración completa, porque reemplaza y no combina.

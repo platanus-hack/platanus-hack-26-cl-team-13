@@ -5,7 +5,7 @@ Escenarios: "Selección de proveedor por configuración" del spec sandbox-provid
 
 import pytest
 
-from gemelo.providers import (
+from aigis.providers import (
     VALID_PROVIDERS,
     NetworkProfile,
     SandboxProvider,
@@ -15,8 +15,8 @@ from gemelo.providers import (
     isolated,
     open_network,
 )
-from gemelo.providers.e2b import E2BProvider
-from gemelo.providers.local import LocalProvider
+from aigis.providers.e2b import E2BProvider
+from aigis.providers.local import LocalProvider
 
 
 # Scenario: Proveedor local

@@ -1,7 +1,7 @@
-"""Proxy de salida de Gemelo: aplica la política de red de cada caja.
+"""Proxy de salida de AIgis: aplica la política de red de cada caja.
 
-Corre en su propio contenedor, conectado a la red `gemelo_internal` (sin salida)
-y a `gemelo_egress` (con salida). Es el único puente entre ambas.
+Corre en su propio contenedor, conectado a la red `aigis_internal` (sin salida)
+y a `aigis_egress` (con salida). Es el único puente entre ambas.
 
 Proxy (puerto 3128, solo en las redes Docker):
   - CONNECT host:port (HTTPS) y HTTP con URL absoluta.
@@ -114,8 +114,8 @@ async def pipe(r: asyncio.StreamReader, w: asyncio.StreamWriter) -> None:
 
 
 async def deny(w: asyncio.StreamWriter, reason: str) -> None:
-    body = f"blocked by gemelo egress policy: {reason}\n".encode()
-    w.write(b"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nX-Gemelo: blocked\r\nConnection: close\r\n"
+    body = f"blocked by aigis egress policy: {reason}\n".encode()
+    w.write(b"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nX-Aigis: blocked\r\nConnection: close\r\n"
             + f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
     try:
         await w.drain()
@@ -243,7 +243,7 @@ async def admin(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> N
 async def main() -> None:
     proxy = await asyncio.start_server(handle, "0.0.0.0", PROXY_PORT)
     adm = await asyncio.start_server(admin, "0.0.0.0", ADMIN_PORT)
-    print(f"gemelo egress proxy :{PROXY_PORT}, admin :{ADMIN_PORT}, always={sorted(ALWAYS)}", flush=True)
+    print(f"aigis egress proxy :{PROXY_PORT}, admin :{ADMIN_PORT}, always={sorted(ALWAYS)}", flush=True)
     async with proxy, adm:
         await asyncio.gather(proxy.serve_forever(), adm.serve_forever())
 

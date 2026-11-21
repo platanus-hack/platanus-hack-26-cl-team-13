@@ -48,7 +48,7 @@ pnpm --dir apps/web install       # dependencias de la web
 
 | Qué | Con make | Sin make |
 |---|---|---|
-| Imagen del sandbox | `make sandbox-image` | `docker build -t gemelo-sandbox:local sandbox` |
+| Imagen del sandbox | `make sandbox-image` | `docker build -t aigis-sandbox:local sandbox` |
 | Tests de la API | `make test` | `cd services/api && uv run pytest` |
 | Levantar servicios | `make up` | `docker compose up --build` |
 | Bajar servicios | `make down` | `docker compose down` |

@@ -4,9 +4,9 @@
 
 databases:
   # Corridas, eventos, filtraciones, diffs y costo (PostgresStore). Sin acceso público.
-  - name: gemelo-db
-    databaseName: gemelo
-    user: gemelo
+  - name: aigis-db
+    databaseName: aigis
+    user: aigis
     plan: basic-256mb
     region: oregon
     ipAllowList: []          # solo red privada
@@ -15,7 +15,7 @@ services:
   # Gateway del modelo (P2). Guarda la key; las cajas solo reciben un token por corrida con tope.
   # El Dockerfile.gateway llega con la rama del gateway.
   - type: web
-    name: gemelo-gateway
+    name: aigis-gateway
     runtime: docker
     region: oregon
     plan: starter            # el plan gratis duerme y se pierden los tokens en memoria
@@ -34,7 +34,7 @@ services:
         value: claude-haiku-5-5
 
   - type: web
-    name: gemelo-api
+    name: aigis-api
     runtime: docker
     region: oregon
     plan: starter            # el plan gratis duerme el servicio y se pierden corridas en curso
@@ -43,36 +43,62 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
-      - key: GEMELO_SANDBOX_PROVIDER
+      - key: AIGIS_SANDBOX_PROVIDER
         value: e2b
-      - key: GEMELO_ENV_NAME
+      - key: AIGIS_ENV_NAME
         value: render
-      - key: GEMELO_AGENT
+      - key: AIGIS_AGENT
         value: scripted      # claude cuando el gateway de P2 esté arriba
-      - key: GEMELO_PUBLIC_BASE_URL
-        sync: false          # https://gemelo-api.onrender.com (host exacto, sin comodines)
-      - key: GEMELO_GATEWAY_STUB
-        value: "true"        # false cuando gemelo-gateway tenga la key del upstream
-      - key: GEMELO_GATEWAY_URL
-        sync: false          # https://gemelo-gateway.onrender.com
-      - key: GEMELO_GATEWAY_URL_SANDBOX
+      - key: AIGIS_PUBLIC_BASE_URL
+        sync: false          # https://aigis-api.onrender.com (host exacto, sin comodines)
+      - key: AIGIS_GATEWAY_STUB
+        value: "true"        # false cuando aigis-gateway tenga la key del upstream
+      - key: AIGIS_GATEWAY_URL
+        sync: false          # https://aigis-gateway.onrender.com
+      - key: AIGIS_GATEWAY_URL_SANDBOX
         sync: false          # la misma URL pública HTTPS: host exacto y puerto 443 para el filtro de E2B
-      - key: GEMELO_GATEWAY_ADMIN_TOKEN
+      - key: AIGIS_GATEWAY_ADMIN_TOKEN
         fromService:
           type: web
-          name: gemelo-gateway
+          name: aigis-gateway
           envVarKey: GATEWAY_ADMIN_TOKEN
       - key: DATABASE_URL
         fromDatabase:
-          name: gemelo-db
+          name: aigis-db
           property: connectionString   # cadena interna, por red privada
-      - key: GEMELO_ATTACKER_URL_SANDBOX
+      - key: AIGIS_ATTACKER_URL_SANDBOX
         sync: false
-      - key: GEMELO_WEBHOOK_SECRET
+      - key: AIGIS_WEBHOOK_SECRET
         generateValue: true
-      - key: GEMELO_API_TOKEN
+      - key: AIGIS_API_TOKEN
         generateValue: true
-      - key: GEMELO_CORS_ORIGINS
+      - key: AIGIS_CORS_ORIGINS
         sync: false          # URL de la web de P4
       - key: E2B_API_KEY
         sync: false
+
+  # Panel del equipo y web de P4 (Next.js). El navegador habla solo con este servicio;
+  # el proxy /api/gemelo reenvía a aigis-api con AIGIS_API_TOKEN, incluido el SSE.
+  - type: web
+    name: aigis-web
+    runtime: node
+    plan: starter            # el gratis duerme y corta el SSE de las corridas largas
+    rootDir: apps/web
+    buildCommand: npm ci && npm run build
+    startCommand: npm start  # next start toma $PORT de Render
+    healthCheckPath: /login
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: AIGIS_API_URL
+        sync: false          # https://aigis-api.onrender.com
+      - key: AIGIS_API_TOKEN
+        fromService:
+          type: web
+          name: aigis-api
+          envVarKey: AIGIS_API_TOKEN
+      - key: PANEL_PASSWORD
+        sync: false          # contraseña compartida del equipo
+      - key: PANEL_SECRET
+        generateValue: true  # firma la cookie de sesión

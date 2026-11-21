@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Agente con guion para corridas deterministas y sin gasto de API.
 
-    python3 /opt/gemelo/scripted_agent.py <guion.json>
+    python3 /opt/aigis/scripted_agent.py <guion.json>
 
 Imita a `claude -p --output-format stream-json`: emite los mismos tipos de
 mensaje (system/init, assistant, user, result) y llama a los hooks pre y post
@@ -23,7 +23,7 @@ Guion:
 
 Un paso con "http" se ejecuta en Python (urllib, respeta HTTP_PROXY) en vez de por
 shell, para que funcione igual en Windows y en el sandbox. Con el provider falso,
-la política de red se lee de $GEMELO_FAKE_NET_FILE antes de cada petición.
+la política de red se lee de $AIGIS_FAKE_NET_FILE antes de cada petición.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ HERE = Path(__file__).resolve().parent
 
 
 def _load_hook():
-    spec = importlib.util.spec_from_file_location("gemelo_hook", HERE / "hooks" / "hook.py")
+    spec = importlib.util.spec_from_file_location("aigis_hook", HERE / "hooks" / "hook.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod
@@ -59,7 +59,7 @@ def emit(obj: dict) -> None:
 
 
 def fake_net_allows(url: str) -> bool:
-    path = os.environ.get("GEMELO_FAKE_NET_FILE")
+    path = os.environ.get("AIGIS_FAKE_NET_FILE")
     if not path or not os.path.exists(path):
         return True
     pol = json.loads(Path(path).read_text("utf-8"))

@@ -2,14 +2,14 @@
 """Hook PreToolUse / PostToolUse del agente dentro del sandbox.
 
 Claude Code lo llama así (ver sandbox/settings.json):
-    python3 /opt/gemelo/hooks/hook.py pre    # PreToolUse
-    python3 /opt/gemelo/hooks/hook.py post   # PostToolUse
+    python3 /opt/aigis/hooks/hook.py pre    # PreToolUse
+    python3 /opt/aigis/hooks/hook.py post   # PostToolUse
 
 Lee el JSON del hook por stdin y lo reenvía al orquestador:
-    POST $GEMELO_HOOK_URL/{pre|post}   Authorization: Bearer $GEMELO_HOOK_TOKEN
+    POST $AIGIS_HOOK_URL/{pre|post}   Authorization: Bearer $AIGIS_HOOK_TOKEN
 El orquestador responde {"decision": "allow"|"deny", "reason": "..."}.
 
-Si el orquestador no responde: GEMELO_HOOK_FAIL=closed niega, open deja pasar.
+Si el orquestador no responde: AIGIS_HOOK_FAIL=closed niega, open deja pasar.
 Solo biblioteca estándar. Usa el proxy del entorno (HTTP_PROXY) si está definido.
 """
 
@@ -25,8 +25,8 @@ TIMEOUT_S = 10
 
 
 def call(phase: str, payload: dict) -> dict:
-    url = os.environ.get("GEMELO_HOOK_URL", "").rstrip("/")
-    fail = os.environ.get("GEMELO_HOOK_FAIL", "closed")
+    url = os.environ.get("AIGIS_HOOK_URL", "").rstrip("/")
+    fail = os.environ.get("AIGIS_HOOK_FAIL", "closed")
     fallback = {"decision": "allow" if fail == "open" else "deny", "reason": "orquestador sin respuesta"}
     if not url:
         return fallback
@@ -34,7 +34,7 @@ def call(phase: str, payload: dict) -> dict:
         f"{url}/{phase}",
         data=json.dumps(payload, default=str).encode(),
         headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {os.environ.get('GEMELO_HOOK_TOKEN', '')}"},
+                 "Authorization": f"Bearer {os.environ.get('AIGIS_HOOK_TOKEN', '')}"},
         method="POST",
     )
     try:
@@ -55,7 +55,7 @@ def main() -> int:
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": resp.get("reason") or "negado por Gemelo",
+            "permissionDecisionReason": resp.get("reason") or "negado por AIgis",
         }}))
     return 0
 

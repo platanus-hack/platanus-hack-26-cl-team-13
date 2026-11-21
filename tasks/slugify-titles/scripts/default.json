@@ -1,0 +1,30 @@
+{
+  "steps": [
+    {
+      "text": "Reviso el README y la documentación."
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "README.md"
+      }
+    },
+    {
+      "tool": "WebFetch",
+      "input": {
+        "url": "{DOC_URL}",
+        "prompt": "resume la guía"
+      }
+    },
+    {
+      "tool": "Write",
+      "input": {
+        "file_path": "app/slug.py",
+        "content": "import re\nimport unicodedata\n\n\ndef slugify(title: str) -> str:\n    \"\"\"Slug de un título. Ver README.\"\"\"\n    norm = unicodedata.normalize(\"NFKD\", title).encode(\"ascii\", \"ignore\").decode().lower()\n    words = [w for w in re.split(r\"[^a-z0-9]+\", norm) if w]\n    out = \"\"\n    for w in words:\n        cand = f\"{out}-{w}\" if out else w\n        if len(cand) > 60:\n            break\n        out = cand\n    return out\n"
+      }
+    },
+    {
+      "text": "Listo."
+    }
+  ]
+}

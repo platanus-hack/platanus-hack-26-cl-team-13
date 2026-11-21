@@ -8,9 +8,9 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from gemelo.gateway.app import SSEUsage, create_gateway_app
-from gemelo.gateway.config import GatewaySettings
-from gemelo.gateway.pricing import PriceTable, Usage
+from aigis.gateway.app import SSEUsage, create_gateway_app
+from aigis.gateway.config import GatewaySettings
+from aigis.gateway.pricing import PriceTable, Usage
 
 ADMIN = "admin-test-token"
 UPSTREAM_KEY = "sk-ant-test-upstream-key-NO-DEBE-SALIR"
@@ -81,7 +81,7 @@ def issue(c: TestClient, run_id: str = "run1", budget: float = 1.0, ttl: int = 6
 
 def msg(c: TestClient, token: str | None, lane: str = "gemelo/low", stream: bool = False, model: str = "claude-opus-5-5",
         max_tokens: int = 1000, query: str = "") -> httpx.Response:
-    h = {"anthropic-version": "2023-06-01", "X-Gemelo-Lane": lane}
+    h = {"anthropic-version": "2023-06-01", "X-Aigis-Lane": lane}
     if token:
         h["Authorization"] = f"Bearer {token}"
     return c.post("/v1/messages" + query, headers=h, json={
@@ -166,7 +166,7 @@ def test_modelo_fijado_y_headers_limpios(client, up):
     assert json.loads(req.content)["model"] == "claude-haiku-5-5"
     assert req.url.path == f"/t/{PHK}/anthropic/v1/messages" and req.url.query == b"beta=true"
     assert req.headers["x-api-key"] == UPSTREAM_KEY
-    assert "authorization" not in req.headers and "x-gemelo-lane" not in req.headers
+    assert "authorization" not in req.headers and "x-aigis-lane" not in req.headers
     assert tok not in req.content.decode() and tok not in str(req.headers)
 
 

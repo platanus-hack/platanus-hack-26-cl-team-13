@@ -1,7 +1,7 @@
 # Plantilla del sandbox donde corre el agente (local con Docker; E2B parte del mismo archivo).
 # Contiene: Node 22, Claude Code, git, Python 3.12, pytest, curl y los hooks del agente.
 # No contiene ninguna API key ni credencial del orquestador: secretos y tokens se copian al crear cada caja.
-# Construir: make sandbox-image  (tag gemelo-sandbox:local)
+# Construir: make sandbox-image  (tag aigis-sandbox:local)
 
 # Una sola etapa: E2B construye plantillas desde Dockerfile pero no admite multi-stage
 # (docs.e2b.dev/template/base-image, "Multi-stage Dockerfiles are not supported").
@@ -12,8 +12,9 @@ ARG CLAUDE_CODE_VERSION=2.1.330
 ARG NODE_VERSION=22.20.0
 
 # procps: el orquestador mata los procesos del agente al cortar por tiempo (pkill)
+# bubblewrap y socat: dependencias del sandbox nativo de Claude Code en Linux (carril cc_sandbox)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git curl ca-certificates procps jq xz-utils \
+ && apt-get install -y --no-install-recommends git curl ca-certificates procps jq xz-utils bubblewrap socat \
  && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
@@ -40,18 +41,18 @@ ENV CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
 
 # Usuario sin privilegios: el agente no puede tocar la red ni el sistema.
 # uid fijo 1001: el provider local copia archivos con ese dueño.
-# /handoff: traspaso bajo -> alto, de root y solo lectura para el agente.
+# /handoff: traspaso alto -> bajo, de root y solo lectura para el agente.
 RUN useradd --create-home --uid 1001 --shell /bin/bash agent \
  && mkdir -p /workspace /handoff /etc/claude-code \
  && chown agent:agent /workspace \
  && chmod 755 /handoff
 
 # Hooks y agente con guion: de root y solo lectura para el agente
-COPY hooks/ /opt/gemelo/hooks/
-COPY scripted_agent.py /opt/gemelo/scripted_agent.py
+COPY hooks/ /opt/aigis/hooks/
+COPY scripted_agent.py /opt/aigis/scripted_agent.py
 # Política administrada: el agente no puede desactivar los hooks desde su ~/.claude
 COPY settings.json /etc/claude-code/managed-settings.json
-RUN chmod -R a+rX,go-w /opt/gemelo /etc/claude-code
+RUN chmod -R a+rX,go-w /opt/aigis /etc/claude-code
 
 USER agent
 WORKDIR /workspace

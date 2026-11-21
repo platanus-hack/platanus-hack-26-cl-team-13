@@ -1,24 +1,39 @@
-# Orquestador de Gemelo (`services/api`)
+# Orquestador de AIgis (`services/api`)
 
-Recibe un ataque y una tarea, y los corre en cuatro carriles con cinco cajas: sin defensa, monitor, FIDES y Gemelo (bajo y alto). Entrega el diff del gemelo alto si pasan los tests y el escáner de secretos. Spec completo en `docs/spec-orquestador.md`.
+Recibe un ataque y una tarea, y los corre en cuatro carriles con cinco cajas: sin defensa, monitor, FIDES y Gemelo (alto y bajo). Entrega el diff del gemelo bajo si pasan los tests y el escáner de secretos. Spec completo en `docs/spec-orquestador.md`.
 
 ## Correr
 
+Un solo juego de comandos para Windows, macOS y Linux, con [uv](https://docs.astral.sh/uv) (instala Python 3.12 y las dependencias del `uv.lock`):
+
 ```bash
 cd services/api
-python -m venv .venv && .venv/Scripts/python -m pip install -e ".[dev]"   # en Linux: .venv/bin/python
-.venv/Scripts/python -m pytest -q                 # provider falso, sin Docker ni API
-make -C ../.. sandbox-image                        # imágenes gemelo-sandbox y gemelo-proxy
-.venv/Scripts/python -m pytest -q -m docker        # conformidad del provider Docker
-GEMELO_SANDBOX_PROVIDER=local GEMELO_AGENT=scripted .venv/Scripts/python -m uvicorn gemelo.app:app --port 8000
+uv sync                                   # una vez, o cuando cambie uv.lock
+uv run uvicorn aigis.app:app --host 0.0.0.0 --port 8000   # 0.0.0.0: las cajas Docker la alcanzan por host.docker.internal
+uv run pytest                             # tests con provider falso, sin Docker ni API
 ```
 
-Variables con prefijo `GEMELO_`, ver `gemelo/config.py`. `GEMELO_AGENT=claude` usa Claude Code real a través del gateway (`GEMELO_GATEWAY_URL`, `GEMELO_GATEWAY_STUB=false`).
+Desde la raíz del repo es lo mismo con `make api` y `make test`.
+
+Por defecto la API usa el provider Docker local (`AIGIS_SANDBOX_PROVIDER=local`) y el agente con guion (`AIGIS_AGENT=scripted`). Opciones:
+
+| Para | Variable o comando |
+|---|---|
+| Probar sin Docker | `AIGIS_SANDBOX_PROVIDER=fake` (no aísla nada) |
+| Cajas en E2B | `AIGIS_SANDBOX_PROVIDER=e2b`, `E2B_API_KEY` y `AIGIS_PUBLIC_BASE_URL` |
+| Claude Code real | `AIGIS_AGENT=claude`, `AIGIS_GATEWAY_STUB=false` y la URL del gateway |
+| Pedir token en la API | `AIGIS_API_TOKEN` (en Render siempre) |
+| Guardar en Postgres | `DATABASE_URL` |
+| Conformidad Docker | `make sandbox-image` y `uv run pytest -m docker` |
+| Conformidad E2B | `uv run python -m aigis.providers.e2b_template` y `uv run pytest -m e2b` |
+
+Las variables pueden ir en `.env` (ignorado por git). Todas llevan prefijo `AIGIS_` salvo `DATABASE_URL` y `E2B_API_KEY`; ver `gemelo/config.py`.
 
 ## API
 
 | Método | Ruta | Uso |
 |---|---|---|
+| `GET` | `/health` | estado; único endpoint sin token |
 | `GET` | `/tasks` | tareas disponibles |
 | `POST` | `/runs` | `{"task_id", "attack": {"vector": "readme"|"issue"|"webpage", "payload"}}` |
 | `GET` | `/runs/{id}` | estado y resultado por carril |
@@ -27,7 +42,9 @@ Variables con prefijo `GEMELO_`, ver `gemelo/config.py`. `GEMELO_AGENT=claude` u
 | `POST` | `/runs/{id}/cancel` | cancela y limpia |
 | `GET` | `/queue` | cola visible |
 
-Desde las cajas: `/hooks/{run}/{lane}/{role}/{pre,post}` y `/internal/egress` (proxy). Webhooks: `/webhooks/attacker` (HMAC `X-Gemelo-Signature`) y `/webhooks/canary/{secreto}`.
+Con `AIGIS_API_TOKEN` definido, todas las rutas de esta tabla salvo `/health` piden `Authorization: Bearer <token>`. El panel web lo agrega en su proxy.
+
+Desde las cajas: `/hooks/{run}/{lane}/{role}/{pre,post}` y `/internal/egress` (proxy). Webhooks: `/webhooks/attacker` (HMAC `X-Aigis-Signature`) y `/webhooks/canary/{secreto}`.
 
 ## Módulos
 
@@ -35,19 +52,19 @@ Desde las cajas: `/hooks/{run}/{lane}/{role}/{pre,post}` y `/internal/egress` (p
 |---|---|
 | `runner.py` | cola, ciclo de una corrida, preparación de cajas, hooks, consolidación |
 | `lanes/` | defensa de cada carril en los hooks |
-| `providers/` | interfaz `SandboxProvider`; `local` (Docker), `fake` (tests), `e2b` (pendiente) |
+| `providers/` | interfaz `SandboxProvider`; `local` (Docker), `e2b` y `fake` (tests) |
 | `accept.py` | diff, tests sin red y escaneo del diff |
 | `scanner.py` | secretos en claro, base64 (3 alineaciones), hex, url, fragmentos |
 | `honeytokens.py` | pools A (honeytokens) y B (sintéticos), únicos por caja |
-| `handoff.py` | traspaso bajo -> alto, marcado no confiable |
+| `handoff.py` | traspaso alto -> bajo, marcado no confiable |
 | `leaks.py` | atribución de filtraciones a corrida, carril, gemelo y paso |
 | `gateway_client.py` | contrato con el gateway de P2 y stub |
 | `gateway/` | gateway del modelo (servicio aparte), ver la sección Gateway |
-| `store.py` | interfaz `Store`; `MemoryStore` (P3 agrega Postgres) |
+| `store.py`, `store_pg.py` | interfaz `Store`; `MemoryStore` y `PostgresStore` (con `DATABASE_URL`) |
 
 ## Gateway del modelo
 
-Servicio aparte (`uvicorn gemelo.gateway.app:app`, imagen `Dockerfile.gateway`). Es el único proceso que conoce la API key de Anthropic. Las cajas reciben `ANTHROPIC_BASE_URL=<url pública del gateway>`, `ANTHROPIC_AUTH_TOKEN=<token gw_>` y, si el token es por corrida, `ANTHROPIC_CUSTOM_HEADERS="X-Gemelo-Lane: <lane>/<role>"`.
+Servicio aparte (`uvicorn aigis.gateway.app:app`, imagen `Dockerfile.gateway`). Es el único proceso que conoce la API key de Anthropic. Las cajas reciben `ANTHROPIC_BASE_URL=<url pública del gateway>`, `ANTHROPIC_AUTH_TOKEN=<token gw_>` y, si el token es por corrida, `ANTHROPIC_CUSTOM_HEADERS="X-Aigis-Lane: <lane>/<role>"`.
 
 ### Variables (prefijo `GATEWAY_`)
 
@@ -73,7 +90,7 @@ Servicio aparte (`uvicorn gemelo.gateway.app:app`, imagen `Dockerfile.gateway`).
 | `DELETE /admin/runs/{run_id}` | | `{revoked: n}`: revoca todos los tokens de la corrida |
 | `GET /admin/runs/{run_id}/usage` | | `{cost_usd, requests, tokens, by_lane}` sumado sobre los tokens de la corrida |
 
-Con `lane` (y `role`) en la emisión, el uso se atribuye a ese carril y `X-Gemelo-Lane` se ignora. Sin ellos, el carril sale del header (`<lane>/<role>`, solo `[a-z0-9_-]`; otro valor cuenta como `unknown`). El header falsificado solo mueve la atribución dentro del mismo token, nunca el tope.
+Con `lane` (y `role`) en la emisión, el uso se atribuye a ese carril y `X-Aigis-Lane` se ignora. Sin ellos, el carril sale del header (`<lane>/<role>`, solo `[a-z0-9_-]`; otro valor cuenta como `unknown`). El header falsificado solo mueve la atribución dentro del mismo token, nunca el tope.
 
 ### Rutas del agente
 
@@ -102,7 +119,7 @@ Los precios están en `gemelo/gateway/pricing.py`, marcados por verificar contra
 
 - Se guarda el sha256 de cada token, no el token.
 - La key y la URL del upstream solo se leen del entorno; ninguna respuesta, log ni header las contiene (test `test_la_key_no_sale_en_respuestas`).
-- Al upstream solo pasan `anthropic-version`, `anthropic-beta`, `content-type` y `accept`; `Authorization`, `x-api-key` del agente y `X-Gemelo-Lane` se descartan.
+- Al upstream solo pasan `anthropic-version`, `anthropic-beta`, `content-type` y `accept`; `Authorization`, `x-api-key` del agente y `X-Aigis-Lane` se descartan.
 - El contenedor corre uvicorn sin access log, porque las rutas `/admin/tokens/{token}` llevan el token.
 - Estado en memoria: reiniciar el servicio invalida los tokens vivos.
 
@@ -112,7 +129,7 @@ Servicio web propio con esta entrada en `render.yaml`:
 
 ```yaml
   - type: web
-    name: gemelo-gateway
+    name: aigis-gateway
     runtime: docker
     plan: starter            # el plan gratis duerme y se pierden los tokens en memoria
     dockerfilePath: ./services/api/Dockerfile.gateway
@@ -125,9 +142,9 @@ Servicio web propio con esta entrada en `render.yaml`:
       - key: GATEWAY_UPSTREAM_API_KEY
         sync: false
       - key: GATEWAY_ADMIN_TOKEN
-        sync: false          # el mismo valor que GEMELO_GATEWAY_ADMIN_TOKEN del orquestador
+        sync: false          # el mismo valor que AIGIS_GATEWAY_ADMIN_TOKEN del orquestador
       - key: GATEWAY_MODEL
         value: claude-haiku-5-5
 ```
 
-En el orquestador: `GEMELO_GATEWAY_STUB=false`, `GEMELO_GATEWAY_URL` y `GEMELO_GATEWAY_URL_SANDBOX` con la URL pública HTTPS del gateway (host exacto, puerto 443, para que el filtro de E2B lo permita).
+En el orquestador: `AIGIS_GATEWAY_STUB=false`, `AIGIS_GATEWAY_URL` y `AIGIS_GATEWAY_URL_SANDBOX` con la URL pública HTTPS del gateway (host exacto, puerto 443, para que el filtro de E2B lo permita).

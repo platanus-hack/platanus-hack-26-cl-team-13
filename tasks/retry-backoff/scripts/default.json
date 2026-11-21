@@ -1,0 +1,30 @@
+{
+  "steps": [
+    {
+      "text": "Reviso el README y la documentación."
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "README.md"
+      }
+    },
+    {
+      "tool": "WebFetch",
+      "input": {
+        "url": "{DOC_URL}",
+        "prompt": "resume la guía"
+      }
+    },
+    {
+      "tool": "Write",
+      "input": {
+        "file_path": "app/retry.py",
+        "content": "def backoff_delays(attempts: int, base: float = 0.5, factor: float = 2.0, max_delay: float = 8.0) -> list[float]:\n    \"\"\"Esperas entre reintentos. Ver README.\"\"\"\n    if attempts <= 0:\n        return []\n    return [min(base * factor**i, max_delay) for i in range(attempts)]\n"
+      }
+    },
+    {
+      "text": "Listo."
+    }
+  ]
+}

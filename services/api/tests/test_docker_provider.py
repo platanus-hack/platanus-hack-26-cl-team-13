@@ -33,9 +33,9 @@ def _docker_up() -> bool:
 if not _docker_up():
     pytest.skip("el daemon de Docker no responde", allow_module_level=True)
 
-from gemelo.config import get_settings  # noqa: E402
-from gemelo.providers import NetworkProfile, SandboxSpec, run  # noqa: E402
-from gemelo.providers.local import DockerProvider  # noqa: E402
+from aigis.config import get_settings  # noqa: E402
+from aigis.providers import NetworkProfile, SandboxSpec, run  # noqa: E402
+from aigis.providers.local import DockerProvider  # noqa: E402
 
 GW_PORT = 8787
 
@@ -138,17 +138,17 @@ def test_files_and_cleanup(provider):
 
 
 def test_boxes_cannot_reach_each_other(provider):
-    """El alto no puede pasarle datos al bajo (que tiene internet) ni las cajas abiertas verse entre sí."""
+    """El bajo no puede pasarle datos al alto (que tiene internet) ni las cajas abiertas verse entre sí."""
     async def go():
-        low = await provider.create(_spec(NetworkProfile.open(), role="bajo"))
+        low = await provider.create(_spec(NetworkProfile.open(), role="alto"))
         other = await provider.create(_spec(NetworkProfile.open(), role="unico"))
-        high = await provider.create(_spec(NetworkProfile.isolated([]), role="alto"))
+        high = await provider.create(_spec(NetworkProfile.isolated([]), role="bajo"))
         try:
             await run(provider, low, ["sh", "-c", "nohup python3 -m http.server 8080 >/dev/null 2>&1 &"])
             await asyncio.sleep(1.5)
             ips = (await run(provider, low, ["hostname", "-I"])).stdout.split()
-            assert ips, "el bajo no tiene IPs"
-            # Control: el bajo se alcanza a sí mismo
+            assert ips, "el alto no tiene IPs"
+            # Control: el alto se alcanza a sí mismo
             assert (await _curl(provider, low, "http://127.0.0.1:8080/", "--noproxy", "*")).stdout == "200"
             for ip in ips:
                 for box in (high, other):
@@ -167,13 +167,31 @@ def test_isolated_cannot_resolve_external_names(provider):
     async def go():
         sb = await provider.create(_spec(NetworkProfile.isolated(["pypi.org"])))
         try:
-            for name in ("example.com", "gemelo-dns-leak-probe.example.org", "pypi.org"):
+            for name in ("example.com", "aigis-dns-leak-probe.example.org", "pypi.org"):
                 r = await run(provider, sb, ["sh", "-c", f"timeout 8 getent hosts {name}; echo rc=$?"])
                 assert "rc=0" not in r.stdout, (name, r.stdout)
             # El proxy no resuelve destinos negados: el CONNECT a un nombre fuera de la allowlist
             # se rechaza antes de cualquier consulta DNS
-            r = await _curl(provider, sb, "https://secreto123.gemelo-dns-leak-probe.example.org")
+            r = await _curl(provider, sb, "https://secreto123.aigis-dns-leak-probe.example.org")
             assert r.stdout == "000" or r.stdout.startswith("4")
+        finally:
+            await provider.destroy(sb)
+    asyncio.run(go())
+
+
+def test_nested_sandbox_runs_bubblewrap(provider):
+    """El carril cc_sandbox corre el sandbox nativo de Claude Code (bubblewrap) dentro de la caja.
+    Con enableWeakerNestedSandbox, bubblewrap reusa el /proc del contenedor en vez de montar uno."""
+    bwrap = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--bind", "/proc", "/proc",
+             "--unshare-user", "--unshare-net", "--", "sh", "-c", "cat /proc/self/status >/dev/null && echo dentro"]
+
+    async def go():
+        spec = SandboxSpec(run_id="run_conformidad00", lane="cc_sandbox", role="unico",
+                           network=NetworkProfile.open(), nested_sandbox=True)
+        sb = await provider.create(spec)
+        try:
+            r = await run(provider, sb, bwrap, user="agent")
+            assert r.exit_code == 0 and "dentro" in r.stdout, r.stderr
         finally:
             await provider.destroy(sb)
     asyncio.run(go())

@@ -18,7 +18,7 @@
 - [ ] 3.1 Implementar el módulo de variantes (claro, base64 con alineaciones y padding, hex) compartido con el escaneo del diff; verificar con tests por formato
 - [ ] 3.2 Implementar la detección en claro, base64 y hex en cualquier parte de la petición, incluidos envoltorios codificados; verificar los escenarios de honeytoken en base64 y secreto en hex
 - [ ] 3.3 Implementar la detección de fragmentos por corrida con largo mínimo de 4; verificar el escenario de llave en tres peticiones y un caso que no debe detectarse
-- [ ] 3.4 Implementar la atribución a carril, gemelo y paso, y la clasificación honeytoken o secreto verdadero, con su evento; verificar los escenarios de alarma del gemelo bajo y carril sin defensa
+- [ ] 3.4 Implementar la atribución a carril, gemelo y paso, y la clasificación honeytoken o secreto verdadero, con su evento; verificar los escenarios de alarma del gemelo alto y carril sin defensa
 
 ## 4. Alertas de canary
 

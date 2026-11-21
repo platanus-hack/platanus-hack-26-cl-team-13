@@ -1,0 +1,196 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Tema: oscuro por defecto. next-themes pone .dark en <html>. */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Paleta Egea (docs/design-system/tokens.json): Egea ajustada en claro y Egea noche en
+ * oscuro, la misma identidad en los dos temas (cobalto, arena y verde azulado sobre piedra
+ * y mar). Todos los textos pasan 4.5:1 sobre fondo, tarjetas, carril destacado, terminal y
+ * su propio relleno de estado; los bordes de los gemelos pasan 3:1.
+ * Los nombres de shadcn (background, card, primary…) apuntan a los del sistema.
+ * Semánticos del dominio, nunca decorativos, cada uno en su familia de color:
+ *   leak    = fuga real de un secreto (pool B), errores. Carmesí.
+ *   honey   = honeytoken / llave falsa. Arena y ámbar, como el gemelo alto.
+ *   safe    = contenido, tests en verde (token ok). Verde azulado.
+ *   warn    = resultado parcial: monitor engañado, FIDES que rompe la tarea. Violeta.
+ *   blocked = neutro: cancelado o sin dato
+ *   tainted = contexto contaminado (riesgo, usa warn)
+ */
+:root {
+  --radius: 10px;
+
+  /* Marca (logo e isotipo sobre fondo oscuro), fija en ambos temas */
+  --brand-ink: #0f1722;
+  --brand-signal: #8db2ea;
+  --brand-canary: #d9b98c;
+  --brand-fog: #eee8dc;
+
+  /* Claro: Egea ajustada */
+  --background: #f3efe6;
+  --foreground: #1f1a17;
+  --card: #fbf9f4;
+  --card-foreground: #1f1a17;
+  --popover: #fbf9f4;
+  --popover-foreground: #1f1a17;
+  --raised: #dce3e6;
+  --primary: #1e4f91;
+  --primary-foreground: #fbf9f4;
+  --secondary: #f3efe6;
+  --secondary-foreground: #1f1a17;
+  --muted: #f3efe6;
+  --muted-foreground: #4e4741;
+  --subtle: #6a6159;
+  --accent: #e7e1d4;
+  --accent-foreground: #1f1a17;
+  --destructive: #91062f;
+  --border: #ddd5c6;
+  --input: #ddd5c6;
+  --ring: #1e4f91;
+
+  --leak: #91062f;
+  --leak-soft: color-mix(in srgb, #91062f 12%, transparent);
+  --honey: #89532b;
+  --honey-soft: color-mix(in srgb, #d9b98c 50%, transparent);
+  --safe: #006b62;
+  --safe-soft: color-mix(in srgb, #006b62 12%, transparent);
+  --warn: #6a31c1;
+  --warn-soft: color-mix(in srgb, #6a31c1 12%, transparent);
+  --terminal: #f3efe6;
+  /* Gemelos: alto en arena (internet, llaves falsas), bajo en cobalto (sin internet, llaves verdaderas) */
+  --twin-high: #a27842;
+  --twin-low: #1e4f91;
+  --iso-signal: #1e4f91;
+  --iso-canary: #d9b98c;
+  /* Serie de gráficos: el cobalto, que pasa contraste y croma sobre las tarjetas */
+  --chart-1: #1e4f91;
+}
+
+/* Oscuro: Egea noche, derivada de Egea */
+.dark {
+  --background: #0f1722;
+  --foreground: #eee8dc;
+  --card: #172231;
+  --card-foreground: #eee8dc;
+  --popover: #172231;
+  --popover-foreground: #eee8dc;
+  --raised: #1c3150;
+  --primary: #8db2ea;
+  --primary-foreground: #0f1722;
+  --secondary: #0f1722;
+  --secondary-foreground: #eee8dc;
+  --muted: #0f1722;
+  --muted-foreground: #b9b2a6;
+  --subtle: #a8a195;
+  --accent: #1c3150;
+  --accent-foreground: #eee8dc;
+  --destructive: #f86f7f;
+  --border: #2a3a50;
+  --input: #2a3a50;
+  --ring: #8db2ea;
+
+  --leak: #f86f7f;
+  --leak-soft: color-mix(in srgb, #f86f7f 16%, transparent);
+  --honey: #e3aa7b;
+  --honey-soft: color-mix(in srgb, #e3aa7b 16%, transparent);
+  --safe: #7dc8ae;
+  --safe-soft: color-mix(in srgb, #7dc8ae 16%, transparent);
+  --warn: #b588f8;
+  --warn-soft: color-mix(in srgb, #b588f8 16%, transparent);
+  --terminal: #0b121b;
+  --twin-high: #d9b98c;
+  --twin-low: #8db2ea;
+  --iso-signal: #8db2ea;
+  --iso-canary: #d9b98c;
+  --chart-1: #8db2ea;
+}
+
+/* Derivados: un neutro para lo que no es estado */
+:root,
+.dark {
+  --blocked: var(--subtle);
+  --blocked-soft: color-mix(in srgb, var(--subtle) 14%, transparent);
+  --tainted: var(--warn);
+  --tainted-soft: var(--warn-soft);
+}
+
+@theme inline {
+  --font-sans: var(--font-plex-sans), system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, Menlo, monospace;
+  --font-brand: var(--font-inter), system-ui, sans-serif;
+
+  /* Radios AIgis: 6 chips e inputs, 10 botones y código, 14 tarjetas y carriles */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-leak: var(--leak);
+  --color-leak-soft: var(--leak-soft);
+  --color-honey: var(--honey);
+  --color-honey-soft: var(--honey-soft);
+  --color-safe: var(--safe);
+  --color-safe-soft: var(--safe-soft);
+  --color-blocked: var(--blocked);
+  --color-blocked-soft: var(--blocked-soft);
+  --color-tainted: var(--tainted);
+  --color-tainted-soft: var(--tainted-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-raised: var(--raised);
+  --color-twin-low: var(--twin-low);
+  --color-twin-high: var(--twin-high);
+  --color-subtle: var(--subtle);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-signal: var(--brand-signal);
+  --color-brand-canary: var(--brand-canary);
+  --color-brand-fog: var(--brand-fog);
+  --color-terminal: var(--terminal);
+  --color-chart-1: var(--chart-1);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+    text-wrap: balance;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

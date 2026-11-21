@@ -1,0 +1,78 @@
+// Resumen legible de cada evento del backend. Lo usan el panel, la vista de corrida y el log.
+import type { GEvent } from "@/lib/types";
+
+export function short(v: unknown, n = 160): string {
+  if (v === null || v === undefined) return "";
+  const s = typeof v === "string" ? v : JSON.stringify(v);
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+export function full(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  return typeof v === "string" ? v : JSON.stringify(v, null, 2);
+}
+
+// Resumen de una línea por tipo de evento, con la clase de color y el detalle expandible
+export function describe(ev: GEvent): { cls: string; text: string; detail?: string } {
+  const d = ev.data || {};
+  switch (ev.type) {
+    case "tool.pre":
+      return {
+        cls: d.decision === "deny" ? "deny" : "allow",
+        text: `${d.decision === "deny" ? "NEGADO" : "permitido"} ${d.tool}${d.reason ? ` · ${d.reason}` : ""}`,
+        detail: full(d.input),
+      };
+    case "tool.post":
+      return { cls: "", text: `${d.tool} respondió: ${short(d.output, 90)}`, detail: full(d.output) };
+    case "agent.text":
+      return { cls: "text", text: short(d.text, 220), detail: d.text?.length > 220 ? d.text : undefined };
+    case "agent.end":
+      return {
+        cls: d.status === "agent_done" ? "info" : "err",
+        text: `agente terminó: ${d.status} · ${d.turns ?? 0} turnos · exit ${d.exit_code ?? "?"}`,
+        detail: d.stderr_tail || undefined,
+      };
+    case "sandbox.ready":
+      return {
+        cls: "info",
+        text: `caja lista · red ${d.network} · pool ${d.pool} · ${(d.secrets || []).join(", ") || "sin secretos"}`,
+      };
+    case "lane.status":
+      return { cls: "info", text: `estado: ${d.status}` };
+    case "monitor.score":
+      return {
+        cls: d.score !== null && d.score >= 7 ? "deny" : "info",
+        text: `monitor: ${d.score ?? "sin score"}/10 · ${short(d.reason, 140)}`,
+      };
+    case "net.cut":
+      return { cls: "cut", text: `RED CORTADA (${d.profile}) por ${d.cause}` };
+    case "net.blocked":
+      return { cls: "cut", text: `salida bloqueada · ${d.tool} → ${short(d.target, 100)}` };
+    case "net.egress":
+      return {
+        cls: d.decision === "deny" ? "cut" : "allow",
+        text: `proxy ${d.decision}: ${d.host}:${d.port}${d.reason ? ` (${d.reason})` : ""}`,
+      };
+    case "handoff":
+      return { cls: "info", text: `traspaso ${d.kind}: ${d.name} · ${d.bytes} B`, detail: d.source };
+    case "test.result":
+      return { cls: d.passed ? "allow" : "deny", text: `tests ${d.passed ? "pasan" : "fallan"} (exit ${d.exit_code})`, detail: d.summary };
+    case "scan.result":
+      return {
+        cls: d.clean ? "allow" : "leak",
+        text: d.clean ? "escáner del diff: limpio" : `escáner del diff: ${d.hits.length} secreto(s) en el diff`,
+        detail: d.clean ? undefined : full(d.hits),
+      };
+    case "leak.detected":
+      return {
+        cls: "leak",
+        text: `FILTRACIÓN ${d.kind} ${d.env_name} · ${d.source}/${d.channel ?? "?"} · ${d.encoding}${d.late ? " · tardía" : ""}`,
+      };
+    case "lane.result":
+      return { cls: "info", text: `veredicto: ${d.verdict}`, detail: full(d) };
+    case "error":
+      return { cls: "err", text: `error en ${d.where}: ${short(d.message, 160)}`, detail: full(d.message) };
+    default:
+      return { cls: "", text: `${ev.type} ${short(d, 140)}`, detail: full(d) };
+  }
+}

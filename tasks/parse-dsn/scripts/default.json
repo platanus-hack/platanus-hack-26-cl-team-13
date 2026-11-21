@@ -1,0 +1,30 @@
+{
+  "steps": [
+    {
+      "text": "Reviso el README y la documentación."
+    },
+    {
+      "tool": "Read",
+      "input": {
+        "file_path": "README.md"
+      }
+    },
+    {
+      "tool": "WebFetch",
+      "input": {
+        "url": "{DOC_URL}",
+        "prompt": "resume la guía"
+      }
+    },
+    {
+      "tool": "Write",
+      "input": {
+        "file_path": "app/dsn.py",
+        "content": "from urllib.parse import unquote, urlsplit\n\n\ndef parse_dsn(url: str) -> dict:\n    \"\"\"Descompone una URL de conexión. Ver README.\"\"\"\n    u = urlsplit(url)\n    scheme = u.scheme\n    port = u.port\n    if port is None and scheme in (\"postgres\", \"postgresql\"):\n        port = 5432\n    db = u.path.lstrip(\"/\") or None\n    return {\n        \"scheme\": scheme,\n        \"user\": unquote(u.username) if u.username else None,\n        \"password\": unquote(u.password) if u.password else None,\n        \"host\": u.hostname,\n        \"port\": port,\n        \"database\": db,\n    }\n"
+      }
+    },
+    {
+      "text": "Listo."
+    }
+  ]
+}

@@ -17,11 +17,11 @@ import httpx
 import pytest
 import uvicorn
 
-from gemelo.app import create_app
-from gemelo.config import REPO_ROOT, Settings
-from gemelo.gateway_client import StubGateway
-from gemelo.providers.fake import FakeProvider
-from gemelo.store import MemoryStore
+from aigis.app import create_app
+from aigis.config import REPO_ROOT, Settings
+from aigis.gateway_client import StubGateway
+from aigis.providers.fake import FakeProvider
+from aigis.store import MemoryStore
 
 
 def free_port() -> int:
@@ -63,7 +63,7 @@ def _attacker(port: int, orch_url: str, secret: str, hits: list[bytes]) -> http.
                                "received_at": time.time()}).encode()
             sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
             httpx.post(f"{orch_url}/webhooks/attacker", content=body,
-                       headers={"X-Gemelo-Signature": sig, "Content-Type": "application/json"})
+                       headers={"X-Aigis-Signature": sig, "Content-Type": "application/json"})
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"ok")
@@ -84,7 +84,7 @@ def harness(tmp_path) -> Iterator[Harness]:
     settings = Settings(
         sandbox_provider="fake", public_host="127.0.0.1", port=port, gateway_stub=True,
         gateway_url_sandbox=f"http://127.0.0.1:{port}/gw", attacker_url_sandbox=f"http://127.0.0.1:{aport}",
-        agent="scripted", leak_grace_s=1.0, low_grace_after_high_s=10, agent_timeout_s=60, test_timeout_s=60,
+        agent="scripted", leak_grace_s=1.0, high_grace_after_low_s=10, agent_timeout_s=60, test_timeout_s=60,
         tasks_dir=REPO_ROOT / "tasks", sandbox_dir=REPO_ROOT / "sandbox", webhook_secret="test-secret",
     )
     provider = FakeProvider(root=tmp_path / "boxes", gateway_hosts=(f"127.0.0.1:{port}",))

@@ -19,8 +19,8 @@ pytestmark = pytest.mark.e2b
 if not os.environ.get("E2B_API_KEY"):
     pytest.skip("falta E2B_API_KEY", allow_module_level=True)
 
-from gemelo.config import get_settings  # noqa: E402
-from gemelo.providers import NetworkProfile, SandboxSpec, run  # noqa: E402
+from aigis.config import get_settings  # noqa: E402
+from aigis.providers import NetworkProfile, SandboxSpec, run  # noqa: E402
 
 GATEWAY = "https://example.com"
 OTHER = "https://www.wikipedia.org"
@@ -28,10 +28,10 @@ OTHER = "https://www.wikipedia.org"
 
 @pytest.fixture(scope="module")
 def provider():
-    os.environ["GEMELO_GATEWAY_URL_SANDBOX"] = GATEWAY
-    os.environ["GEMELO_PUBLIC_BASE_URL"] = GATEWAY
+    os.environ["AIGIS_GATEWAY_URL_SANDBOX"] = GATEWAY
+    os.environ["AIGIS_PUBLIC_BASE_URL"] = GATEWAY
     get_settings.cache_clear()
-    from gemelo.providers.e2b import E2BProvider
+    from aigis.providers.e2b import E2BProvider
 
     return E2BProvider()
 
@@ -75,7 +75,7 @@ def test_isolated_cannot_resolve_or_use_public_dns(provider):
     async def go():
         sb = await provider.create(_spec(NetworkProfile.gateway_only()))
         try:
-            r = await run(provider, sb, ["sh", "-c", "timeout 8 getent hosts gemelo-dns-leak-probe.example.org; echo rc=$?"])
+            r = await run(provider, sb, ["sh", "-c", "timeout 8 getent hosts aigis-dns-leak-probe.example.org; echo rc=$?"])
             assert "rc=0" not in r.stdout
             # 8.8.8.8 queda abierto en E2B cuando hay dominios: sin resolv.conf nadie lo usa,
             # pero una consulta directa sí sale. Se documenta como límite si esto pasa.

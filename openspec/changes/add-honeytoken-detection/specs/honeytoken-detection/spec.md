@@ -34,9 +34,9 @@ El sistema SHALL detectar un valor conocido repartido en varias peticiones de la
 ### Requirement: Atribución
 Cada detección SHALL atribuirse al carril y gemelo dueños del valor detectado y al paso del agente más cercano anterior a la petición, según los eventos de la corrida.
 
-#### Scenario: Alarma del gemelo bajo
-- **WHEN** el atacante recibe el honeytoken asignado al gemelo bajo del carril Gemelo, enviado en su paso 4
-- **THEN** la detección indica carril `gemelo`, gemelo `bajo` y paso 4
+#### Scenario: Alarma del gemelo alto
+- **WHEN** el atacante recibe el honeytoken asignado al gemelo alto del carril Gemelo, enviado en su paso 4
+- **THEN** la detección indica carril `gemelo`, gemelo `alto` y paso 4
 
 ### Requirement: Clasificación de la detección
 Cada detección SHALL clasificarse como honeytoken (llave falsa, el ataque ocurrió sin daño) o secreto verdadero (filtración real), y emitir el evento de detección correspondiente.

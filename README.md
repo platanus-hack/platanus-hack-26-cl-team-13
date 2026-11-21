@@ -14,17 +14,17 @@
 
 Un agente con terminal (como Claude Code) puede exfiltrar las llaves del repo, por una inyección de prompt o porque el modelo se porta mal. AIgis implementa *secure multi-execution* para agentes: corre dos copias de la misma tarea.
 
-- **Gemelo alto:** llaves verdaderas, **sin internet** (solo el gateway del modelo y una allowlist).
-- **Gemelo bajo:** internet abierta, pero solo **honeytokens**.
+- **Gemelo bajo:** llaves verdaderas, **sin internet** (solo el gateway del modelo y una allowlist).
+- **Gemelo alto:** internet abierta, pero solo **honeytokens**.
 
-Aceptamos el `git diff` del gemelo alto (tras escanearlo en busca de secretos) y lo que el bajo mandó a la red. Lo único que puede filtrarse es falso y delata al atacante. No se detecta el robo: se hace imposible por construcción.
+Aceptamos el `git diff` del gemelo bajo (tras escanearlo en busca de secretos) y lo que el alto mandó a la red. Lo único que puede filtrarse es falso y delata al atacante. No se detecta el robo: se hace imposible por construcción.
 
 ```mermaid
 flowchart LR
   T["Repo de la tarea"] --> B & A
-  W["Internet"] <--> B["Gemelo bajo<br/>honeytokens + red"]
+  W["Internet"] <--> B["Gemelo alto<br/>honeytokens + red"]
   B --> X["Servidor atacante<br/>solo recibe honeytokens"]
-  A["Gemelo alto<br/>secretos, sin red"] --> GW["Gateway del modelo"]
+  A["Gemelo bajo<br/>secretos, sin red"] --> GW["Gateway del modelo"]
   A -. "acción de riesgo" .-> G["Vigilante de integridad"]
   A --> D["git diff"] --> S["Escaneo de secretos"] --> OUT["Resultado aceptado"]
 ```
@@ -32,12 +32,12 @@ flowchart LR
 ## Estructura
 
 ```
-services/api/gemelo/     orquestador (paquete interno "gemelo")
+services/api/aigis/     orquestador (paquete interno "gemelo")
   providers/             local (Docker), e2b, fake
   lanes/                 none, monitor, fides, gemelo
   gateway/               proxy al modelo: live / record / replay, topes
   scanner.py · leaks.py  escaneo del diff y detección de filtraciones
-  integrity.py           vigilante de integridad del gemelo alto
+  integrity.py           vigilante de integridad del gemelo bajo
 services/attacker/       sink público + decodificadores
 sandbox/                 imagen con Claude Code, hooks y agente con guion
 egress_proxy/            proxy de salida para el provider local
