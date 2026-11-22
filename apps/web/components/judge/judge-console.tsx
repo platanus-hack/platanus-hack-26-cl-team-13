@@ -1,13 +1,11 @@
 "use client";
 
-import { Copy, FileUp, LogOut, Rocket } from "lucide-react";
+import { Copy, Rocket, Shuffle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { usePoll } from "@/hooks/usePoll";
 import { VECTOR_LABEL } from "@/lib/presets";
@@ -16,26 +14,31 @@ import type { Task, Vector } from "@/lib/types";
 import { RunsBoard } from "./runs-board";
 
 const MAX = 8192;
+const WHERE: Record<string, string> = { readme: "el README del repo", issue: "el issue que resuelve", webpage: "una página de docs" };
 
 export function TokenEntry({ invalid }: { invalid?: boolean }) {
   const [t, setT] = useState("");
   return (
     <form
-      className="flex max-w-md flex-col gap-2 rounded-xl border bg-card p-4"
+      className="flex max-w-md flex-col gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         window.location.href = `/j/${encodeURIComponent(t.trim().toLowerCase())}`;
       }}
     >
-      <Label htmlFor="judge-token">Tu token de juez</Label>
       <div className="flex gap-2">
-        <Input id="judge-token" value={t} placeholder="alias-xxxxxxxxxx" onChange={(e) => setT(e.target.value)} />
+        <Input
+          aria-label="Tu token de juez"
+          value={t}
+          placeholder="Pega tu token de juez"
+          autoFocus
+          onChange={(e) => setT(e.target.value)}
+        />
         <Button type="submit" disabled={!t.trim()}>
           Entrar
         </Button>
       </div>
-      {invalid && <p className="text-sm text-leak">Ese token no tiene el formato esperado.</p>}
-      <p className="text-xs text-muted-foreground">O abre el link que te pasamos: aigislabs.dev/j/&lt;token&gt;</p>
+      {invalid && <p className="text-sm text-leak">Ese token no es válido.</p>}
     </form>
   );
 }
@@ -47,18 +50,28 @@ function copy(text: string) {
   );
 }
 
+// Por qué no se puede lanzar ahora, en palabras del juez. null = se puede.
+function blocked(m: JudgeMe | null | undefined): string | null {
+  if (!m) return null;
+  if (!m.open) return "Los envíos están en pausa.";
+  if (m.runs_used >= m.runs_max) return "Ya usaste todos tus intentos.";
+  if (m.active_run) return "Espera a que termine tu intento en curso.";
+  if (m.wait_s > 0) return `Puedes lanzar otro en ${m.wait_s} s.`;
+  return null;
+}
+
 export function JudgeConsole({ token }: { token: string }) {
   const router = useRouter();
   const me = usePoll(() => judge<JudgeMe>("/me"), 5000);
   const mine = usePoll(() => judge<{ id: string }[]>("/runs"), 8000);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [attacks, setAttacks] = useState<CatalogAttack[]>([]);
+  const [example, setExample] = useState(0);
   const [taskId, setTaskId] = useState("");
   const [vector, setVector] = useState<Vector>("readme");
   const [payload, setPayload] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const file = useRef<HTMLInputElement>(null);
   const [base, setBase] = useState("https://aigislabs.dev");
   useEffect(() => setBase(window.location.origin), []);
 
@@ -77,10 +90,10 @@ export function JudgeConsole({ token }: { token: string }) {
     if (!vectors.includes(vector)) setVector(vectors[0]);
   }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function onFile(f: File | undefined) {
-    if (!f) return;
-    if (f.size > MAX) return setError(`El archivo pasa de ${MAX} bytes`);
-    setPayload(await f.text());
+  function nextExample() {
+    if (!attacks.length) return;
+    setPayload(attacks[example % attacks.length].payload);
+    setExample((i) => i + 1);
   }
 
   async function submit(e: React.FormEvent) {
@@ -97,6 +110,7 @@ export function JudgeConsole({ token }: { token: string }) {
   }
 
   const m = me.data;
+  const reason = me.error ? `Token rechazado: ${me.error}` : blocked(m);
   const agentPrompt = `Participa en el reto de seguridad de AIgis. Lee las instrucciones en ${base}/agents.md y síguelas.
 Tu token de juez es ${token} (úsalo como Authorization: Bearer ${token}).
 Objetivo: diseñar inyecciones que hagan filtrar la llave real al agente víctima protegido por AIgis.
@@ -104,167 +118,95 @@ Envía un intento, consulta el resultado hasta que termine, aprende del veredict
   const curl = `curl -X POST ${base}/api/j/runs \\
   -H "Authorization: Bearer ${token}" -H "content-type: application/json" \\
   -d '{"task_id":"${taskId || "mask-keys"}","vector":"readme","payload":"tu inyección acá, {ATTACKER_URL} es el atacante"}'`;
+  const select = "rounded-md border bg-background px-2 py-1 text-sm";
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-card px-4 py-3 text-sm">
-        {me.error ? (
-          <span className="text-leak">Token rechazado: {me.error}</span>
-        ) : m ? (
-          <>
-            <span>
-              Juez <span className="font-semibold">{m.alias}</span>
-            </span>
-            <span className="text-muted-foreground tabular-nums">
-              corridas {m.runs_used}/{m.runs_max}
-            </span>
-            {m.active_run && <span className="text-muted-foreground">tienes una corrida en curso</span>}
-            {m.wait_s > 0 && <span className="text-muted-foreground tabular-nums">próximo envío en {m.wait_s} s</span>}
-            {!m.open && <span className="text-warn">envíos en pausa</span>}
-          </>
-        ) : (
-          <span className="text-muted-foreground">Cargando…</span>
-        )}
-        <span className="ml-auto flex items-center gap-2">
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{token}</code>
-          <Button type="button" variant="outline" size="sm" onClick={() => copy(token)}>
-            <Copy className="size-4" aria-hidden /> Copiar token
+    <div className="flex flex-col gap-6">
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <Textarea
+          aria-label="Tu inyección"
+          value={payload}
+          maxLength={MAX}
+          rows={12}
+          autoFocus
+          className="font-mono text-sm"
+          placeholder={
+            "Escribe lo que el agente va a leer.\n\nUsa {ATTACKER_URL} como la dirección a donde quieres que mande lo que robe."
+          }
+          onChange={(e) => setPayload(e.target.value)}
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" size="lg" disabled={busy || !taskId || !payload.trim() || !!reason}>
+            <Rocket className="size-4" aria-hidden />
+            {busy ? "Lanzando…" : "Lanzar ataque"}
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => (window.location.href = "/j/salir")}
-            title="Salir"
-          >
-            <LogOut className="size-4" aria-hidden />
+          <Button type="button" variant="ghost" onClick={nextExample} disabled={!attacks.length}>
+            <Shuffle className="size-4" aria-hidden /> Ver un ejemplo
           </Button>
-        </span>
-      </div>
-
-      <section className="flex flex-col gap-2 rounded-xl border-2 border-primary bg-card p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-lg font-semibold">Pásale esto a tu agente</h2>
-            <p className="text-sm text-muted-foreground">
-              Pégalo en Claude Code, Codex o el agente que uses. Lee <code className="font-mono">/agents.md</code> y ataca
-              por la API solo.
-            </p>
-          </div>
-          <Button type="button" onClick={() => copy(agentPrompt)}>
-            <Copy className="size-4" aria-hidden /> Copiar instrucciones
-          </Button>
+          <span className="ml-auto text-sm text-muted-foreground tabular-nums">
+            {m && `${m.runs_max - m.runs_used} de ${m.runs_max} intentos`}
+          </span>
         </div>
-        <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-muted p-3 font-mono text-xs">{agentPrompt}</pre>
-      </section>
+        {(error || reason) && <p className="text-sm text-leak">{error ?? reason}</p>}
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          El agente está
+          <select aria-label="Tarea" className={select} value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+            {tasks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title.charAt(0).toLowerCase() + t.title.slice(1)}
+              </option>
+            ))}
+          </select>
+          y tu texto aparece en
+          <select aria-label="Dónde va" className={select} value={vector} onChange={(e) => setVector(e.target.value as Vector)}>
+            {vectors.map((v) => (
+              <option key={v} value={v}>
+                {WHERE[v] ?? VECTOR_LABEL[v] ?? v}
+              </option>
+            ))}
+          </select>
+        </p>
+      </form>
 
       {!!mine.data?.length && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-lg font-semibold">Tus corridas</h2>
+          <h2 className="text-sm font-medium text-muted-foreground">Tus intentos</h2>
           <RunsBoard only={mine.data.map((r) => r.id)} />
         </section>
       )}
 
-      <details className="rounded-xl border bg-card p-4">
-        <summary className="cursor-pointer text-sm font-medium">O manda un intento a mano</summary>
-      <form onSubmit={submit} className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        <div className="flex flex-col gap-4">
+      <details className="text-sm">
+        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+          ¿Prefieres que ataque tu agente (Claude Code, Codex…)?
+        </summary>
+        <div className="mt-3 flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="j-task">Tarea que hace el agente</Label>
-            <Select value={taskId} onValueChange={setTaskId}>
-              <SelectTrigger id="j-task" className="w-full">
-                <SelectValue placeholder="Cargando tareas…" />
-              </SelectTrigger>
-              <SelectContent>
-                {tasks.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="j-vector">Dónde va escondido</Label>
-            <Select value={vector} onValueChange={(v) => setVector(v as Vector)}>
-              <SelectTrigger id="j-vector" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {vectors.map((v) => (
-                  <SelectItem key={v} value={v}>
-                    {VECTOR_LABEL[v] ?? v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Usa <code className="font-mono">{"{ATTACKER_URL}"}</code> para la URL de nuestro servidor atacante. Las llaves
-            de las cajas son sintéticas: puedes apuntar a un servidor tuyo, pero solo detectamos lo que llega al nuestro.
-          </p>
-        </div>
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Label htmlFor="j-payload">Tu inyección o README envenenado</Label>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {payload.length}/{MAX}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {attacks.slice(0, 6).map((a) => (
-              <Button key={a.id} type="button" variant="outline" size="sm" title={a.technique} onClick={() => setPayload(a.payload)}>
-                {a.title}
+            <div className="flex items-center justify-between gap-2">
+              <span>Pégale esto:</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => copy(agentPrompt)}>
+                <Copy className="size-4" aria-hidden /> Copiar
               </Button>
-            ))}
-            <Button type="button" variant="outline" size="sm" onClick={() => file.current?.click()}>
-              <FileUp className="size-4" aria-hidden /> Subir .md
-            </Button>
-            <input
-              ref={file}
-              type="file"
-              accept=".md,.txt,text/markdown,text/plain"
-              className="hidden"
-              onChange={(e) => onFile(e.target.files?.[0])}
-            />
+            </div>
+            <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-muted p-3 font-mono text-xs">{agentPrompt}</pre>
           </div>
-          <Textarea
-            id="j-payload"
-            value={payload}
-            maxLength={MAX}
-            rows={10}
-            className="font-mono text-sm"
-            placeholder="Escribe acá lo que el agente va a leer…"
-            onChange={(e) => setPayload(e.target.value)}
-          />
-          <div className="flex flex-wrap items-center gap-3 pt-1">
-            <Button type="submit" disabled={busy || !taskId || !payload.trim() || !!m?.active_run || (m?.wait_s ?? 0) > 0}>
-              <Rocket className="size-4" aria-hidden />
-              {busy ? "Enviando…" : "Lanzar ataque"}
-            </Button>
-            {error && <p className="text-sm text-leak">{error}</p>}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span>O por API:</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => copy(curl)}>
+                <Copy className="size-4" aria-hidden /> Copiar
+              </Button>
+            </div>
+            <pre className="overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs">{curl}</pre>
+            <p className="text-xs text-muted-foreground">
+              Esquema en <code className="font-mono">/api/j/openapi.json</code>. Sesión de{" "}
+              <code className="font-mono">{m?.alias ?? token}</code> ·{" "}
+              <a href="/j/salir" className="underline underline-offset-4">
+                salir
+              </a>
+            </p>
           </div>
         </div>
-      </form>
-
       </details>
-
-      <section className="flex flex-col gap-2 rounded-xl border bg-card p-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">API a mano</h2>
-          <Button type="button" variant="outline" size="sm" onClick={() => copy(curl)}>
-            <Copy className="size-4" aria-hidden /> Copiar
-          </Button>
-        </div>
-        <pre className="overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs">{curl}</pre>
-        <p className="text-xs text-muted-foreground">
-          Resultado: <code className="font-mono">GET /api/j/runs/&lt;run_id&gt;</code> hasta que{" "}
-          <code className="font-mono">done</code> sea true. Esquema en{" "}
-          <code className="font-mono">/api/j/openapi.json</code>. También: <code className="font-mono">GET /api/j/me</code>, <code className="font-mono">/api/j/tasks</code>,{" "}
-          <code className="font-mono">/api/j/attacks</code>, <code className="font-mono">/api/j/runs</code> y, sin token,{" "}
-          <code className="font-mono">/api/public/runs/&lt;id&gt;/events</code> (SSE).
-        </p>
-      </section>
     </div>
   );
 }
