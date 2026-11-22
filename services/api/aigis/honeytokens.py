@@ -83,6 +83,8 @@ class SecretRegistry:
         self.by_id: dict[str, SecretRef] = {}
         self._canaries: list[dict] = []
         self._used_canaries: set[str] = set()
+        # canary_id -> secreto pareado (AWS_SECRET_ACCESS_KEY), para poder usar la llave (canary.py)
+        self.canary_secrets: dict[str, str] = {}
         if canaries_path and canaries_path.exists():
             self._canaries = json.loads(canaries_path.read_text("utf-8"))
 
@@ -99,14 +101,22 @@ class SecretRegistry:
     def assign(self, run_id: str, lane: LaneKind, role: Role, spec: list[tuple[str, str]]) -> list[SecretRef]:
         pool: Pool = "A" if role == "alto" else "B"
         refs = []
-        for env_name, kind in spec:
-            canary = self._take_canary(env_name, kind) if pool == "A" else None
+        canaries = [self._take_canary(env_name, kind) if pool == "A" else None for env_name, kind in spec]
+        # Una canary de AWS trae su secret key: va en la AWS_SECRET_ACCESS_KEY de la misma caja,
+        # así el par es válido y el orquestador puede usarlo para disparar la alerta
+        paired = next((c for c in canaries if c and c.get("secret")), None)
+        for (env_name, kind), canary in zip(spec, canaries):
+            value = canary["value"] if canary else None
+            if value is None and paired and kind == "aws_secret_key":
+                value = paired["secret"]
+                self.canary_secrets[paired.get("canary_id") or paired.get("id")] = value
+                paired = None
             ref = SecretRef(
                 id=new_id("sec"),
                 pool=pool,
                 env_name=env_name,
                 kind=kind,
-                value=canary["value"] if canary else GENERATORS[kind](),
+                value=value or GENERATORS[kind](),
                 canary_id=(canary.get("canary_id") or canary.get("id")) if canary else None,
                 run_id=run_id,
                 lane=lane,

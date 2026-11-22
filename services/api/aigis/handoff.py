@@ -39,7 +39,7 @@ def _safe_name(s: str) -> str:
 async def deliver(orch: Orchestrator, rc: RunCtx, source: str, content: str, kind: str) -> str | None:
     """Escribe un ítem en el /handoff del bajo. Devuelve el nombre o None si no hay bajo."""
     lo = rc.sandbox("gemelo", "bajo")
-    if lo is None or rc.finished_agents.get(("gemelo", "bajo")):
+    if lo is None or rc.finished_agents.get(("gemelo", "bajo")) or "handoff" in rc.run.ablate:
         return None
     rc.handoff_n += 1
     name = f"{rc.handoff_n:03d}_{kind}_{_safe_name(source)}.md"
@@ -53,7 +53,7 @@ async def deliver(orch: Orchestrator, rc: RunCtx, source: str, content: str, kin
 async def sync_dir(orch: Orchestrator, rc: RunCtx) -> list[str]:
     """Copia archivos nuevos de .aigis/untrusted/ del alto al bajo."""
     hi = rc.sandbox("gemelo", "alto")
-    if hi is None:
+    if hi is None or "handoff" in rc.run.ablate:
         return []
     delivered = []
     try:

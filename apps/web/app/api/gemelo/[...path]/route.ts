@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Rutas de operación que el panel puede usar; lo demás (hooks, webhooks) no pasa por acá
-const ALLOWED = /^(health|tasks|lanes|attacks|queue|budget|runs(\/[A-Za-z0-9_]+(\/(events|cancel|lanes\/[a-z_]+\/diff))?)?)$/;
+const ALLOWED = /^(health|tasks|lanes|attacks|queue|budget|runs(\/[A-Za-z0-9_]+(\/(events|cancel|chain|usage|lanes\/[a-z_]+\/diff))?)?)$/;
 
 async function forward(req: Request, ctx: { params: Promise<{ path: string[] }> }) {
   // El middleware ya lo revisa; se repite acá para no depender de una sola capa

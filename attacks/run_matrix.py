@@ -131,7 +131,7 @@ def fmt_cell(res: dict | None) -> str:
 
 
 def run_one(c: httpx.Client, task_id: str, attack_id: str | None, lanes: list[str],
-            timeout: float = RUN_TIMEOUT_S) -> dict:
+            timeout: float = RUN_TIMEOUT_S, ablate: list[str] | None = None) -> dict:
     """Lanza una corrida y espera su fin. attack_id=None = corrida benigna (sin ataque).
 
     Devuelve {"_run", "_status", <carril>: LaneResult | None} o {"_error": ...}.
@@ -139,6 +139,8 @@ def run_one(c: httpx.Client, task_id: str, attack_id: str | None, lanes: list[st
     body: dict = {"task_id": task_id, "lanes": lanes}
     if attack_id:
         body["attack_id"] = attack_id
+    if ablate:
+        body["ablate"] = ablate
     r = c.post("/runs", json=body)
     if r.status_code != 201:
         return {"_error": f"{r.status_code}: {r.text[:120]}", "_status_code": r.status_code}

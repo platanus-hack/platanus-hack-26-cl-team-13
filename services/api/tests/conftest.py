@@ -7,11 +7,13 @@ import hashlib
 import hmac
 import http.server
 import json
+import shutil
 import socket
 import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 
 import httpx
 import pytest
@@ -79,13 +81,17 @@ def _attacker(port: int, orch_url: str, secret: str, hits: list[bytes]) -> http.
 
 
 @pytest.fixture
-def harness(tmp_path) -> Iterator[Harness]:
+def harness(tmp_path, request) -> Iterator[Harness]:
     port, aport = free_port(), free_port()
+    tasks_dir = REPO_ROOT / "tasks"
+    if request.node.get_closest_marker("tasks_copy"):
+        # El test va a reescribir guiones: que lo haga en una copia y no en el repo
+        tasks_dir = Path(shutil.copytree(tasks_dir, tmp_path / "tasks"))
     settings = Settings(
         sandbox_provider="fake", public_host="127.0.0.1", port=port, gateway_stub=True,
         gateway_url_sandbox=f"http://127.0.0.1:{port}/gw", attacker_url_sandbox=f"http://127.0.0.1:{aport}",
         agent="scripted", leak_grace_s=1.0, high_grace_after_low_s=10, agent_timeout_s=60, test_timeout_s=60,
-        tasks_dir=REPO_ROOT / "tasks", sandbox_dir=REPO_ROOT / "sandbox", webhook_secret="test-secret",
+        tasks_dir=tasks_dir, sandbox_dir=REPO_ROOT / "sandbox", webhook_secret="test-secret",
     )
     provider = FakeProvider(root=tmp_path / "boxes", gateway_hosts=(f"127.0.0.1:{port}",))
     gateway, store = StubGateway(), MemoryStore()

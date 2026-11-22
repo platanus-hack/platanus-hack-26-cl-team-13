@@ -24,6 +24,8 @@ Por defecto la API usa el provider Docker local (`AIGIS_SANDBOX_PROVIDER=local`)
 | Claude Code real | `AIGIS_AGENT=claude`, `AIGIS_GATEWAY_STUB=false` y la URL del gateway |
 | Pedir token en la API | `AIGIS_API_TOKEN` (en Render siempre) |
 | Corte global de presupuesto | `AIGIS_BUDGET_USD` (crédito live; 0 = sin corte) y `AIGIS_BUDGET_CUT_RATIO` (0.9) |
+| Disparar la alerta real de las canary | `AIGIS_CANARY_TRIGGER=true` y canaries con `secret` en `secrets/canaries.json` (sale a AWS STS) |
+| Llaves partidas en varias peticiones | `AIGIS_FRAGMENT_COVERAGE` (0.9), `AIGIS_FRAGMENT_MIN_LEN` (4), `AIGIS_FRAGMENT_WINDOW_S` (900), `AIGIS_FRAGMENT_TOKEN_MAX` (256) |
 | Guardar en Postgres | `DATABASE_URL` |
 | Conformidad Docker | `make sandbox-image` y `uv run pytest -m docker` |
 | Conformidad E2B | `uv run python -m aigis.providers.e2b_template` y `uv run pytest -m e2b` |
@@ -36,11 +38,12 @@ Las variables pueden ir en `.env` (ignorado por git). Todas llevan prefijo `AIGI
 |---|---|---|
 | `GET` | `/health` | estado; único endpoint sin token |
 | `GET` | `/tasks` | tareas disponibles |
-| `POST` | `/runs` | `{"task_id", "attack": {"vector": "readme"|"issue"|"webpage", "payload"}}` |
+| `POST` | `/runs` | `{"task_id", "attack": {"vector": "readme"|"issue"|"webpage", "payload"}}`; opcional `"ablate": ["honeytokens"|"diff_scan"|"handoff"|"allowlist"|"low_hints"]` (exige el carril gemelo) |
 | `GET` | `/runs/{id}` | estado y resultado por carril |
 | `GET` | `/runs/{id}/events?after=N` | SSE, reanudable con `Last-Event-ID` |
 | `GET` | `/runs/{id}/lanes/{lane}/diff` | diff; en gemelo solo si se entregó |
 | `POST` | `/runs/{id}/cancel` | cancela y limpia |
+| `GET` | `/runs/{id}/chain` | cadena del ataque por carril y caja: no confiable → secreto → codificación → salida → desenlace |
 | `GET` | `/runs/{id}/usage` | uso real del gateway; `by_lane` con claves `<carril>/<rol>` y `<carril>/monitor` |
 | `GET` | `/budget` | gasto real (`aigis_usage`) + reserva de `AIGIS_RUN_BUDGET_USD` por corrida sin terminar, contra el corte |
 | `GET` | `/queue` | cola visible |
@@ -62,7 +65,10 @@ Desde las cajas: `/hooks/{run}/{lane}/{role}/{pre,post}` y `/internal/egress` (p
 | `scanner.py` | secretos en claro, base64 (3 alineaciones), hex, url, fragmentos |
 | `honeytokens.py` | pools A (honeytokens) y B (sintéticos), únicos por caja |
 | `handoff.py` | traspaso alto -> bajo, marcado no confiable |
-| `leaks.py` | atribución de filtraciones a corrida, carril, gemelo y paso |
+| `leaks.py` | atribución de filtraciones a corrida, carril, gemelo y paso; llaves partidas en varias peticiones |
+| `canary.py` | usa una canary recibida por el atacante (STS firmado con SigV4) para que suene la alerta real |
+| `divergence.py` | compara los dos gemelos paso a paso; fuga contrafactual del bajo |
+| `chain.py` | cadena del ataque desde los eventos guardados |
 | `gateway_client.py` | contrato con el gateway de P2 y stub |
 | `gateway/` | gateway del modelo (servicio aparte), ver la sección Gateway |
 | `store.py`, `store_pg.py` | interfaz `Store`; `MemoryStore` y `PostgresStore` (con `DATABASE_URL`) |

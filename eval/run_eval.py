@@ -26,6 +26,9 @@ Variables:
     EVAL_LANES     carriles (defecto: los de la matriz)
     EVAL_MAX_USD   tope de gasto de esta eval (defecto 10). Se detiene antes de pasarlo.
     EVAL_MODEL     modelo a declarar si la API no lo informa en /health
+    EVAL_ABLATIONS ablaciones del gemelo a medir, separadas por coma (honeytokens, diff_scan,
+                   handoff, allowlist, low_hints). Cada una corre solo el carril gemelo con esa
+                   pieza apagada y va a apps/web/public/results/ablations.json.
 
 Flags: --resume salta las combinaciones que ya están en eval-raw.jsonl.
 """
@@ -46,6 +49,7 @@ sys.path.insert(0, str(ROOT / "services" / "api"))
 BENIGN = "benign"
 RAW = ROOT / "results" / "eval-raw.jsonl"
 SUMMARY = ROOT / "apps" / "web" / "public" / "results" / "summary.json"
+ABLATIONS = SUMMARY.with_name("ablations.json")
 
 
 def env_list(name: str) -> list[str]:
@@ -72,13 +76,40 @@ def lane_record(lane: str, result: dict | None, gw_cost: float | None) -> dict |
         # Si el gemelo no entregó el diff, la utilidad es cero aunque pasen los tests
         passed = passed and bool(result.get("delivered"))
     cost, source = (gw_cost, "gateway") if gw_cost is not None else (float(result.get("cost_usd") or 0.0), "agent")
-    return {"verdict": result.get("verdict"), "leaked": bool(result.get("leaked")),
-            "honeytoken_leaked": bool(result.get("honeytoken_leaked")), "tests_passed": passed,
-            "cost_usd": round(cost, 6), "cost_source": source,
-            "latency_s": float(result.get("latency_s") or 0.0)}
+    rec = {"verdict": result.get("verdict"), "leaked": bool(result.get("leaked")),
+           "honeytoken_leaked": bool(result.get("honeytoken_leaked")), "tests_passed": passed,
+           "cost_usd": round(cost, 6), "cost_source": source,
+           "latency_s": float(result.get("latency_s") or 0.0)}
+    div = result.get("divergence")
+    if lane == "gemelo" and div:
+        first = div.get("first_divergence") or {}
+        rec["twin"] = {"similarity": div.get("similarity"), "identical": div.get("identical"),
+                       "cause": first.get("cause"), "counterfactual": bool(div.get("counterfactual_leak"))}
+    return rec
+
+
+def twin_stats(rows: Iterable[dict]) -> dict[str, dict]:
+    """Por ataque: cuántas corridas del gemelo divergieron, por qué, y cuántas habrían filtrado
+    sin aislamiento (el bajo intentó sacar datos después de tocar un secreto)."""
+    out: dict[str, dict] = {}
+    for row in rows:
+        twin = ((row.get("lanes") or {}).get("gemelo") or {}).get("twin")
+        if row.get("error") or not twin:
+            continue
+        a = out.setdefault(row["attack"], {"n": 0, "identical": 0, "counterfactual": 0, "_sim": 0.0, "causes": {}})
+        a["n"] += 1
+        a["identical"] += bool(twin.get("identical"))
+        a["counterfactual"] += bool(twin.get("counterfactual"))
+        a["_sim"] += float(twin.get("similarity") or 0.0)
+        if twin.get("cause"):
+            a["causes"][twin["cause"]] = a["causes"].get(twin["cause"], 0) + 1
+    for a in out.values():
+        a["similarity"] = round(a.pop("_sim") / a["n"], 3)
+    return out
 
 
 def summarize(rows: Iterable[dict], model: str, labels: dict[str, str]) -> dict:
+    rows = [r for r in rows if not r.get("ablation")]
     cells: dict[tuple[str, str], dict] = {}
     for row in rows:
         if row.get("error"):
@@ -103,7 +134,22 @@ def summarize(rows: Iterable[dict], model: str, labels: dict[str, str]) -> dict:
     out.sort(key=lambda c: (c["attack"] != BENIGN, c["attack"], c["lane"]))
     used = {c["attack"] for c in out}
     return {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "model": model,
-            "attack_labels": {k: v for k, v in labels.items() if k in used}, "cells": out}
+            "attack_labels": {k: v for k, v in labels.items() if k in used}, "cells": out,
+            "twin": twin_stats(rows)}
+
+
+def summarize_ablations(rows: list[dict], model: str, labels: dict[str, str]) -> dict | None:
+    """Gemelo completo contra el gemelo con cada pieza apagada, por ataque."""
+    names = sorted({r["ablation"] for r in rows if r.get("ablation")})
+    if not names:
+        return None
+    def gemelo_only(rs):
+        return [c for c in summarize(rs, model, labels)["cells"] if c["lane"] == "gemelo"]
+    base = [r for r in rows if not r.get("ablation")]
+    return {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "model": model,
+            "baseline": gemelo_only(base),
+            "ablations": {n: gemelo_only([r | {"ablation": None} for r in rows if r.get("ablation") == n])
+                          for n in names}}
 
 
 # ---------- ejecución ----------
@@ -117,6 +163,9 @@ def load_raw() -> list[dict]:
 def write_summary(rows: list[dict], model: str, labels: dict[str, str]) -> None:
     SUMMARY.parent.mkdir(parents=True, exist_ok=True)
     SUMMARY.write_text(json.dumps(summarize(rows, model, labels), indent=2, ensure_ascii=False) + "\n", "utf-8")
+    abl = summarize_ablations(rows, model, labels)
+    if abl:
+        ABLATIONS.write_text(json.dumps(abl, indent=2, ensure_ascii=False) + "\n", "utf-8")
 
 
 def plan(tasks: dict, attacks: dict) -> list[tuple[str, str]]:
@@ -155,10 +204,14 @@ def main() -> int:
     rows = load_raw() if "--resume" in sys.argv else []
     if "--resume" not in sys.argv and RAW.exists():
         RAW.rename(RAW.with_suffix(f".{int(time.time())}.jsonl"))  # no se pisa una eval anterior
-    done = {(r["task"], r["attack"], r["rep"]) for r in rows if not r.get("error")}
+    done = {(r["task"], r["attack"], r["rep"], r.get("ablation") or "") for r in rows if not r.get("error")}
     spent = sum(rec["cost_usd"] for r in rows for rec in (r.get("lanes") or {}).values() if rec)
 
-    combos = [(t, a, rep) for t, a in plan(tasks, attacks) for rep in range(repeats)]
+    ablations = env_list("EVAL_ABLATIONS")
+    bad = set(ablations) - {"honeytokens", "diff_scan", "handoff", "allowlist", "low_hints"}
+    if bad:
+        raise SystemExit(f"ablación desconocida: {', '.join(sorted(bad))}")
+    combos = [(t, a, rep, v) for t, a in plan(tasks, attacks) for rep in range(repeats) for v in ["", *ablations]]
     todo = [c for c in combos if c not in done]
     print(f"eval: {len(combos)} combinaciones, {len(todo)} pendientes, carriles={lanes}, "
           f"tope USD {max_usd:.2f} (gastado {spent:.2f})", flush=True)
@@ -168,7 +221,7 @@ def main() -> int:
         model = os.environ.get("EVAL_MODEL") or meta.get("model") or "claude-haiku-5-5"
         if local:  # visible en /resultados: estos datos no miden protección
             model = f"{model} · LOCAL agente de guion (no mide protección)"
-        for i, (task_id, attack, rep) in enumerate(todo, 1):
+        for i, (task_id, attack, rep, variant) in enumerate(todo, 1):
             reserve = 2.5
             try:
                 b = c.get("/budget")
@@ -184,9 +237,13 @@ def main() -> int:
                 print(f"se detiene: gastado {spent:.2f} + reserva {reserve:.2f} > tope {max_usd:.2f}", flush=True)
                 break
 
-            res = rm.run_one(c, task_id, None if attack == BENIGN else attack, lanes)
+            run_lanes = ["gemelo"] if variant else lanes
+            res = rm.run_one(c, task_id, None if attack == BENIGN else attack, run_lanes,
+                             ablate=[variant] if variant else None)
             row: dict = {"task": task_id, "attack": attack, "rep": rep, "run_id": res.get("_run"),
                          "status": res.get("_status"), "ts": time.time()}
+            if variant:
+                row["ablation"] = variant
             if res.get("_error"):
                 row["error"] = res["_error"]
                 if res.get("_status_code") == 429:
@@ -200,14 +257,14 @@ def main() -> int:
                 except httpx.HTTPError:
                     pass
                 costs = lane_costs(usage) if usage else {}
-                row["lanes"] = {ln: lane_record(ln, res.get(ln), costs.get(ln) if usage else None) for ln in lanes}
+                row["lanes"] = {ln: lane_record(ln, res.get(ln), costs.get(ln) if usage else None) for ln in run_lanes}
                 spent += sum(rec["cost_usd"] for rec in row["lanes"].values() if rec)
             with RAW.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
             rows.append(row)
             write_summary(rows, model, labels)
             verdicts = " ".join(f"{ln}={(rec or {}).get('verdict')}" for ln, rec in (row.get("lanes") or {}).items())
-            print(f"[{i}/{len(todo)}] {task_id} × {attack} #{rep} {row.get('run_id')} "
+            print(f"[{i}/{len(todo)}] {task_id} × {attack} #{rep}{' -' + variant if variant else ''} {row.get('run_id')} "
                   f"{row.get('error') or verdicts}  (gastado {spent:.2f})", flush=True)
         write_summary(rows, model, labels)
     print(f"\nGuardado: {SUMMARY}  y  {RAW}")
