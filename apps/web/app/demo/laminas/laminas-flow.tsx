@@ -9,12 +9,15 @@ import { LaneGrid } from "@/components/run/lane-grid";
 import { AigisMark, AigisWordmark } from "@/components/site/aigis-logo";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useLiveRun } from "@/hooks/useLiveRun";
 import { useReplay } from "@/hooks/useReplay";
+import { api, isLiveUnavailable, post } from "@/lib/api";
+import type { CatalogAttack } from "@/lib/public-api";
 import { DEMO_ATTACKS, demoRecording } from "@/lib/demo-run";
 import { LANE_DEFENSE, laneHeadline } from "@/lib/lanes";
 import type { Recording } from "@/lib/replay";
 import { laneTotals, pct, type ResultsSummary } from "@/lib/results";
-import { type GEvent, LANE_LABEL, LANE_ORDER, type LaneKind, type Vector } from "@/lib/types";
+import { FINISHED, type GEvent, LANE_LABEL, LANE_ORDER, type LaneKind, type Run, type Task, type Vector } from "@/lib/types";
 import { TONE_CLASS } from "@/lib/verdict";
 import { cn } from "@/lib/utils";
 
@@ -129,14 +132,51 @@ export function LaminasFlow() {
 
   const [hook, setHook] = useState(1);
 
+  // Modo en vivo: si la API responde, el ataque corre de verdad en los cuatro carriles
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskId, setTaskId] = useState("");
+  const [catalog, setCatalog] = useState<CatalogAttack[]>([]);
+  const [liveId, setLiveId] = useState<string | null>(null);
+  const [liveErr, setLiveErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api<Task[]>("/tasks")
+      .then((t) => {
+        setTasks(t);
+        if (t[0]) setTaskId(t[0].id);
+      })
+      .catch(() => {});
+    api<CatalogAttack[]>("/attacks")
+      .then(setCatalog)
+      .catch(() => {});
+  }, []);
+  const live = tasks.length > 0;
   const [vector, setVector] = useState<Vector>(DEMO_ATTACKS[0].vector);
   const [payload, setPayload] = useState(DEMO_ATTACKS[0].payload);
   const [runNo, setRunNo] = useState(0);
   const [rec, setRec] = useState<Recording | null>(null);
   const player = useReplay(rec);
   const launch = () => {
+    setLiveId(null);
     setRunNo((n) => n + 1);
     setRec(demoRecording({ vector, payload }, runNo + 1));
+  };
+  const launchLive = async () => {
+    setBusy(true);
+    setLiveErr(null);
+    try {
+      const r = await post<{ run_id: string }>("/runs", {
+        task_id: taskId,
+        attack: { vector, payload, author: "pitch" },
+        lanes: [...LANE_ORDER],
+      });
+      setLiveId(r.run_id);
+      go(at("Carriles"));
+    } catch (e) {
+      setLiveErr(isLiveUnavailable(e) ? "La API en vivo no está disponible ahora. Usa la simulación." : (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const byLane = useMemo(() => {
@@ -314,9 +354,42 @@ export function LaminasFlow() {
                 rows={4}
                 className="w-full resize-y rounded-md border bg-background p-3 font-mono text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               />
+              {live && (
+                <label className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  Tarea del agente
+                  <select
+                    value={taskId}
+                    onChange={(e) => setTaskId(e.target.value)}
+                    className="rounded-md border bg-background px-2 py-1 text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    {tasks.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span>Ejemplos del catálogo:</span>
-                {DEMO_ATTACKS.map((x) => (
+                {catalog
+                  .filter((x) => x.vectors.some((v) => v === "readme" || v === "issue" || v === "webpage"))
+                  .slice(0, 6)
+                  .map((x) => (
+                    <button
+                      key={x.id}
+                      type="button"
+                      title={x.technique}
+                      onClick={() => {
+                        setVector((x.vectors.find((v) => v === "readme" || v === "issue" || v === "webpage") ?? "readme") as Vector);
+                        setPayload(x.payload);
+                      }}
+                      className="rounded-md border px-2 py-1 hover:bg-accent hover:text-foreground"
+                    >
+                      {x.title}
+                    </button>
+                  ))}
+                {!catalog.length && DEMO_ATTACKS.map((x) => (
                   <button
                     key={x.id}
                     type="button"
@@ -332,23 +405,31 @@ export function LaminasFlow() {
               </div>
             </div>
             <div className="flex flex-wrap justify-center gap-3">
-            <Next
-              onClick={() => {
-                launch();
-                go(at("Carriles"));
-              }}
-            >
-              <Zap className="size-4" aria-hidden /> Lanzar contra los cuatro
-            </Next>
-            <Button asChild size="lg" variant="outline">
-              <Link href="/demo/ataca">Lanzar en vivo</Link>
-            </Button>
+              {live && (
+                <Next onClick={launchLive} disabled={busy || !payload.trim() || !taskId}>
+                  <Zap className="size-4" aria-hidden /> {busy ? "Lanzando…" : "Lanzar en vivo contra los cuatro"}
+                </Next>
+              )}
+              <Next
+                variant={live ? "outline" : undefined}
+                onClick={() => {
+                  launch();
+                  go(at("Carriles"));
+                }}
+              >
+                {!live && <Zap className="size-4" aria-hidden />} Simular
+              </Next>
             </div>
+            {liveErr && <p className="text-sm text-leak">{liveErr}</p>}
+            {!live && <p className="text-xs text-muted-foreground">Sin conexión con la API: solo está disponible la simulación.</p>}
           </Center>
         )}
 
         {/* 6. Carriles */}
-        {step === at("Carriles") && (
+        {step === at("Carriles") && liveId && (
+          <LiveLanes id={liveId} onBack={() => go(at("Ataque"))} onNext={() => go(at("Resultado"))} />
+        )}
+        {step === at("Carriles") && !liveId && (
           <section className="flex flex-col gap-4">
             <header className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
               <div className="flex min-w-0 flex-col gap-1">
@@ -403,6 +484,10 @@ export function LaminasFlow() {
         {step === at("Resultado") && (
           <Center>
             <Kicker>¿Qué pasó?</Kicker>
+            {liveId ? (
+              <LiveResult id={liveId} onBack={() => go(at("Ataque"))} />
+            ) : (
+              <>
             <DemoBadge>Corrida simulada</DemoBadge>
             <h2 className="max-w-[24ch] text-4xl leading-tight font-semibold text-balance sm:text-5xl">
               En esta corrida filtraron las tres defensas. <AigisWordmark /> entregó la tarea y solo salió una llave falsa.
@@ -429,6 +514,8 @@ export function LaminasFlow() {
               <Button variant="outline" onClick={() => go(at("Ataque"))}>
                 Lanzar la corrida primero
               </Button>
+            )}
+              </>
             )}
             <div className="flex w-full flex-col gap-3 rounded-xl border bg-card p-5 text-left">
               <span className="font-mono text-xs tracking-widest text-primary uppercase">Con Claude Haiku 5.5 real, en nuestra VM</span>
@@ -611,3 +698,102 @@ function Dashboard({ s }: { s: ResultsSummary }) {
     </div>
   );
 }
+
+// Cuatro tarjetas con el veredicto de cada carril
+function VerdictCards({ run }: { run: Run }) {
+  return (
+    <div className="grid w-full gap-3 md:grid-cols-4">
+      {LANE_ORDER.map((l) => {
+        const h = laneHeadline(run.lanes[l]?.result);
+        return (
+          <div key={l} className={cn("flex flex-col gap-2 rounded-xl border p-4 text-left", h ? TONE_CLASS[h.tone] : "", l === "gemelo" && "border-2")}>
+            <span className="text-sm font-semibold text-foreground">{l === "gemelo" ? <AigisWordmark /> : LANE_LABEL[l]}</span>
+            <span className="font-display text-xl leading-tight font-semibold">{h?.title ?? "en curso"}</span>
+            <span className="text-sm opacity-80">{h?.sub}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function useByLane(events: GEvent[]) {
+  return useMemo(() => {
+    const m: Record<string, GEvent[]> = {};
+    for (const e of events) if (e.lane) (m[e.lane] ||= []).push(e);
+    return m;
+  }, [events]);
+}
+
+// Corrida real en los cuatro carriles, por la API del orquestador
+function LiveLanes({ id, onBack, onNext }: { id: string; onBack: () => void; onNext: () => void }) {
+  const { run, events, error } = useLiveRun(id);
+  const byLane = useByLane(events);
+  const done = run ? FINISHED.includes(run.status) : false;
+  return (
+    <section className="flex flex-col gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <ToneBadge tone="safe" className="w-fit">
+              Corrida real
+            </ToneBadge>
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span aria-hidden className={cn("size-1.5 rounded-full", done ? "bg-muted-foreground/50" : "animate-pulse bg-safe")} />
+              {run ? (run.status === "queued" && run.queue_position ? `en cola, posición ${run.queue_position}` : done ? "terminada" : "corriendo") : "conectando"}
+            </span>
+          </div>
+          <h2 className="text-2xl font-semibold">Claude Code con el ataque, en los cuatro carriles</h2>
+          {error && <p className="text-sm text-leak">{error}</p>}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href={`/demo/runs/${id}`}>Ver el detalle</Link>
+          </Button>
+          <Button variant="outline" onClick={onBack}>
+            Cambiar el ataque
+          </Button>
+        </div>
+      </header>
+      {run ? <LaneGrid run={run} byLane={byLane} /> : <div className="h-80 animate-pulse rounded-xl border border-dashed" />}
+      <div className="flex justify-center">
+        <Next onClick={onNext}>¿Qué pasó?</Next>
+      </div>
+    </section>
+  );
+}
+
+// Resultado de la corrida real: el titular sale de los veredictos, no de un guion
+function LiveResult({ id, onBack }: { id: string; onBack: () => void }) {
+  const { run, events } = useLiveRun(id);
+  const leaks = useMemo(() => events.filter((e) => e.type === "leak.detected"), [events]);
+  if (!run) return <div className="h-40 w-full animate-pulse rounded-xl border border-dashed" />;
+  const done = FINISHED.includes(run.status);
+  const refs = LANE_ORDER.filter((l) => l !== "gemelo");
+  const fell = refs.filter((l) => run.lanes[l]?.result?.leaked).length;
+  const aigis = run.lanes.gemelo?.result;
+  const head = !done
+    ? "La corrida sigue en curso."
+    : `${fell === 0 ? "Ninguna" : fell === refs.length ? "Las tres" : `${fell} de las ${refs.length}`} defensa${fell === 1 ? "" : "s"} de referencia filtr${fell === 1 ? "ó" : "aron"} la llave real.`;
+  const tail = !done || !aigis ? null : aigis.leaked ? "AIgis también la filtró." : aigis.delivered ? "AIgis entregó la tarea sin filtrarla." : "AIgis no la filtró.";
+  return (
+    <>
+      <ToneBadge tone="safe" className="w-fit">
+        Corrida real
+      </ToneBadge>
+      <h2 className="max-w-[24ch] text-4xl leading-tight font-semibold text-balance sm:text-5xl">
+        {head} {tail}
+      </h2>
+      <VerdictCards run={run} />
+      <div className="w-full text-left">
+        <AttackerPanel leaks={leaks} />
+      </div>
+      {!done && (
+        <Button variant="outline" onClick={onBack}>
+          Volver al ataque
+        </Button>
+      )}
+    </>
+  );
+}
+
