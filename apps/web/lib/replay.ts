@@ -1,7 +1,7 @@
 // Grabaciones: formato y reconstrucción del estado de una corrida a partir de sus eventos.
 // Una grabación es un JSON estático (public/replays/<id>.json) que se reproduce sin API.
 // No confundir con el modo "replay" del gateway, que reejecuta desde cassettes/.
-import type { Box, GEvent, LaneResult, Run } from "@/lib/types";
+import type { Box, GEvent, LaneResult, Run, RunChain } from "@/lib/types";
 
 export interface RecordingMeta {
   id: string;
@@ -18,6 +18,8 @@ export interface Recording {
   run: Run;
   events: GEvent[];
   diffs: Record<string, { text?: string; error?: string }>;
+  // GET /runs/{id}/chain al exportar; las grabaciones anteriores no la traen
+  chain?: RunChain | null;
 }
 
 export interface RecordingIndexEntry {

@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { usePoll } from "@/hooks/usePoll";
 import { api, duration, fmtDate } from "@/lib/api";
 import { VECTOR_LABEL } from "@/lib/presets";
-import { LANE_LABEL, LANE_ORDER, type Health, type Run } from "@/lib/types";
+import { type Budget, LANE_LABEL, LANE_ORDER, type Health, type Run } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function Dot({ ok }: { ok: boolean }) {
@@ -48,6 +48,61 @@ function HealthStrip() {
       ) : (
         <span className="text-muted-foreground">Conectando con el orquestador…</span>
       )}
+    </div>
+  );
+}
+
+const usd = (n: number) => `USD ${n.toFixed(2)}`;
+
+// Gasto real (lo que reportó el gateway) más la reserva de las corridas sin terminar, contra
+// el corte (budget_cut_ratio del presupuesto). Al pasarlo, POST /runs responde 429 budget.
+function BudgetCard() {
+  const { data: b, error } = usePoll(() => api<Budget>("/budget"), 10000);
+  if (error && !b) return <p className="text-sm text-muted-foreground">Sin datos de gasto: {error}</p>;
+  if (!b) return <p className="text-sm text-muted-foreground">Cargando…</p>;
+  const capped = b.budget_usd > 0;
+  const pct = (n: number) => (capped ? Math.min(100, (n / b.budget_usd) * 100) : 0);
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex items-center gap-2">
+          <Dot ok={b.live_enabled} />
+          {b.live_enabled ? "En vivo habilitado" : "En vivo pausado: la web muestra las grabaciones"}
+        </span>
+      </div>
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 tabular-nums [&_dd]:[overflow-wrap:anywhere]">
+        <dt className="text-muted-foreground">Gastado</dt>
+        <dd>{usd(b.spent_usd)}</dd>
+        <dt className="text-muted-foreground">Comprometido</dt>
+        <dd>
+          {usd(b.committed_usd)}
+          {b.in_flight ? (
+            <span className="text-muted-foreground"> ({b.in_flight} en curso × {usd(b.reserved_per_run_usd)})</span>
+          ) : null}
+        </dd>
+        <dt className="text-muted-foreground">Corte</dt>
+        <dd>{capped ? `${usd(b.limit_usd)} de ${usd(b.budget_usd)}` : "sin tope (AIGIS_BUDGET_USD=0)"}</dd>
+        <dt className="text-muted-foreground">Promedio por corrida</dt>
+        <dd>{b.runs_counted ? usd(b.spent_usd / b.runs_counted) : "–"}</dd>
+      </dl>
+      {capped && (
+        <div
+          className="relative h-2 overflow-hidden rounded-full bg-muted"
+          role="meter"
+          aria-label="Presupuesto comprometido"
+          aria-valuemin={0}
+          aria-valuemax={b.budget_usd}
+          aria-valuenow={b.committed_usd}
+        >
+          <div className="absolute inset-y-0 left-0 bg-primary/40" style={{ width: `${pct(b.committed_usd)}%` }} />
+          <div className="absolute inset-y-0 left-0 bg-primary" style={{ width: `${pct(b.spent_usd)}%` }} />
+          <div className="absolute inset-y-0 w-0.5 bg-leak" style={{ left: `${b.ratio * 100}%` }} aria-hidden />
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">
+        {b.runs_counted} corridas con uso registrado. Si el gateway no responde al cerrar una corrida, su gasto no queda
+        aquí: revisa la consola de Anthropic antes de la demo.
+      </p>
     </div>
   );
 }
@@ -168,7 +223,7 @@ export function PanelHome() {
           <h2 id="new-run" className="text-xl font-semibold">
             Corrida nueva
           </h2>
-          <LaunchForm />
+          <LaunchForm ablations />
         </section>
         <section aria-labelledby="queue-title" className="flex flex-col gap-3 rounded-xl border bg-card p-4">
           <h2 id="queue-title" className="text-xl font-semibold">
@@ -189,6 +244,10 @@ export function PanelHome() {
           ) : (
             <p className="text-sm text-muted-foreground">Vacía. Las corridas nuevas entran aquí si no hay sandboxes libres.</p>
           )}
+          <h2 id="budget-title" className="mt-2 text-xl font-semibold">
+            Gasto
+          </h2>
+          <BudgetCard />
         </section>
       </div>
       <section aria-labelledby="history-title" className="flex flex-col gap-3 rounded-xl border bg-card p-4">

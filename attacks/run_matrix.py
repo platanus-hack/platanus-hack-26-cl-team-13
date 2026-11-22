@@ -33,6 +33,8 @@ import socket
 import sys
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent            # .../attacks
@@ -128,49 +130,68 @@ def fmt_cell(res: dict | None) -> str:
     return v + (f" ({'/'.join(marks)})" if marks else "")
 
 
-def run_attacks(c: httpx.Client, attacks: dict, hits_of) -> dict[str, dict]:
+def run_one(c: httpx.Client, task_id: str, attack_id: str | None, lanes: list[str],
+            timeout: float = RUN_TIMEOUT_S, ablate: list[str] | None = None) -> dict:
+    """Lanza una corrida y espera su fin. attack_id=None = corrida benigna (sin ataque).
+
+    Devuelve {"_run", "_status", <carril>: LaneResult | None} o {"_error": ...}.
+    """
+    body: dict = {"task_id": task_id, "lanes": lanes}
+    if attack_id:
+        body["attack_id"] = attack_id
+    if ablate:
+        body["ablate"] = ablate
+    r = c.post("/runs", json=body)
+    if r.status_code != 201:
+        return {"_error": f"{r.status_code}: {r.text[:120]}", "_status_code": r.status_code}
+    run_id = r.json()["run_id"]
+    try:
+        run = wait_run(c, run_id, timeout)
+    except TimeoutError:
+        return {"_error": f"timeout esperando {run_id}", "_run": run_id}
+    res: dict = {ln: (run["lanes"].get(ln, {}) or {}).get("result") for ln in lanes}
+    res["_run"] = run_id
+    res["_status"] = run["status"]
+    return res
+
+
+def run_attacks(c: httpx.Client, attacks: dict, hits_of, task_id: str | None = None,
+                lanes: list[str] | None = None, only: list[str] | None = None) -> dict[str, dict]:
+    task_id = task_id or TASK_ID
+    lanes = lanes or LANES
+    only = ONLY if only is None else only
     rows: dict[str, dict] = {}
     for aid in attacks:
-        if ONLY and aid not in ONLY:
+        if only and aid not in only:
             continue
-        r = c.post("/runs", json={"task_id": TASK_ID, "attack_id": aid, "lanes": LANES})
-        if r.status_code != 201:
-            rows[aid] = {"_error": f"{r.status_code}: {r.text[:120]}"}
-            print(f"{aid}: ERROR {r.status_code} {r.text[:200]}", flush=True)
+        res = run_one(c, task_id, aid, lanes)
+        if res.get("_error"):
+            rows[aid] = res
+            print(f"{aid}: ERROR {res['_error']}", flush=True)
             continue
-        run_id = r.json()["run_id"]
-        try:
-            run = wait_run(c, run_id, RUN_TIMEOUT_S)
-        except TimeoutError:
-            rows[aid] = {"_error": f"timeout esperando {run_id}"}
-            print(f"{aid}: TIMEOUT {run_id}", flush=True)
-            continue
-        res: dict = {ln: (run["lanes"].get(ln, {}) or {}).get("result") for ln in LANES}
-        res["_run"] = run_id
-        res["_status"] = run["status"]
-        res["_hits"] = hits_of(run_id)
+        res["_hits"] = hits_of(res["_run"])
         res["_kind"] = "code" if attacks[aid].files else "model"
         rows[aid] = res
-        cells = "  ".join(f"{ln}={fmt_cell(res.get(ln))}" for ln in LANES)
-        print(f"{aid:20} [{res['_kind']:5}] {run_id} hits={res['_hits']}  {cells}", flush=True)
+        cells = "  ".join(f"{ln}={fmt_cell(res.get(ln))}" for ln in lanes)
+        print(f"{aid:20} [{res['_kind']:5}] {res['_run']} hits={res['_hits']}  {cells}", flush=True)
     return rows
 
 
-def main_real(attacks: dict) -> tuple[dict, dict]:
+@contextmanager
+def real_client() -> Iterator[tuple[httpx.Client, dict]]:
+    """Cliente contra la API desplegada (modelo real). Falla si la API no corre agent=claude."""
     if not TOKEN:
         raise SystemExit("falta AIGIS_API_TOKEN para la API desplegada")
     with httpx.Client(base_url=API, timeout=30, headers={"authorization": f"Bearer {TOKEN}"}) as c:
         h = c.get("/health").json()
         if h.get("agent") != "claude":
             raise SystemExit(f"la API no corre el modelo real: {h}")
-        meta = {"api": API, "provider": h.get("provider"), "agent": h.get("agent")}
-        print(f"task={TASK_ID} api={API} provider={meta['provider']} agent={meta['agent']} lanes={LANES}\n",
-              flush=True)
-        rows = run_attacks(c, attacks, lambda run_id: leak_events(c, run_id))
-    return meta, rows
+        yield c, {"api": API, "provider": h.get("provider"), "agent": h.get("agent"), "model": h.get("model")}
 
 
-def main_local(attacks: dict) -> tuple[dict, dict]:
+@contextmanager
+def local_client() -> Iterator[tuple[httpx.Client, dict]]:
+    """App en proceso con provider fake + agente de guion. Solo prueba cableado, no protección."""
     import uvicorn
 
     from aigis.app import create_app
@@ -198,15 +219,27 @@ def main_local(attacks: dict) -> tuple[dict, dict]:
         time.sleep(0.05)
     hits: list[bytes] = []
     atk = start_attacker(aport, f"http://127.0.0.1:{port}", hits)
-    meta = {"api": "local", "provider": "fake", "agent": "scripted"}
-    print(f"task={TASK_ID} provider=fake agent=scripted lanes={LANES} (MODO LOCAL: no prueba protección)\n")
     try:
         with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=30) as c:
-            rows = run_attacks(c, attacks, lambda run_id: leak_events(c, run_id))
+            yield c, {"api": "local", "provider": "fake", "agent": "scripted", "model": settings.model}
     finally:
         atk.shutdown()
         server.should_exit = True
         th.join(timeout=10)
+
+
+def main_real(attacks: dict) -> tuple[dict, dict]:
+    with real_client() as (c, meta):
+        print(f"task={TASK_ID} api={API} provider={meta['provider']} agent={meta['agent']} lanes={LANES}\n",
+              flush=True)
+        rows = run_attacks(c, attacks, lambda run_id: leak_events(c, run_id))
+    return meta, rows
+
+
+def main_local(attacks: dict) -> tuple[dict, dict]:
+    with local_client() as (c, meta):
+        print(f"task={TASK_ID} provider=fake agent=scripted lanes={LANES} (MODO LOCAL: no prueba protección)\n")
+        rows = run_attacks(c, attacks, lambda run_id: leak_events(c, run_id))
     return meta, rows
 
 

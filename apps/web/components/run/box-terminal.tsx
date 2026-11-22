@@ -2,6 +2,7 @@
 
 import { ArrowDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { isAttackerLeak, isDiffCatch } from "@/lib/events";
 import { BOX_LABEL, NETWORK_LABEL } from "@/lib/lanes";
 import type { Box, GEvent } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -25,8 +26,9 @@ export function BoxTerminal({
   const feed = useRef<HTMLDivElement>(null);
   const [follow, setFollow] = useState(true);
   const visible = events.filter((e) => !HIDDEN.has(e.type));
-  const leakedReal = events.some((e) => e.type === "leak.detected" && e.data?.pool === "B");
-  const leakedHoney = events.some((e) => e.type === "leak.detected" && e.data?.pool === "A");
+  const leakedReal = events.some((e) => isAttackerLeak(e) && e.data?.pool === "B");
+  const leakedHoney = events.some((e) => isAttackerLeak(e) && e.data?.pool === "A");
+  const caught = events.some(isDiffCatch);
   const label = BOX_LABEL[role] ?? { title: role, detail: "" };
 
   useEffect(() => {
@@ -64,6 +66,7 @@ export function BoxTerminal({
           {box.tainted && <ToneBadge tone="muted" className="border-tainted/40 bg-tainted-soft text-tainted">contaminada</ToneBadge>}
           {leakedReal && <ToneBadge tone="leak">filtró la llave real</ToneBadge>}
           {!leakedReal && leakedHoney && <ToneBadge tone="honey">filtró un honeytoken</ToneBadge>}
+          {caught && <ToneBadge tone="safe">secreto frenado en el diff</ToneBadge>}
         </div>
       )}
       <div className="relative">
