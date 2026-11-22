@@ -12,6 +12,23 @@ export function full(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v, null, 2);
 }
 
+// El escáner del diff también emite leak.detected (source: "scanner") cuando encuentra un
+// secreto en el diff: ese secreto no salió, la defensa lo frenó antes de entregar.
+export function isDiffCatch(e: GEvent): boolean {
+  return e.type === "leak.detected" && e.data?.source === "scanner";
+}
+
+// Lo que de verdad llegó afuera: al atacante o a canarytokens
+export function isAttackerLeak(e: GEvent): boolean {
+  return e.type === "leak.detected" && e.data?.source !== "scanner";
+}
+
+const CAUSE_LABEL: Record<string, string> = {
+  environment: "por el entorno",
+  spontaneous: "espontánea",
+  length: "una terminó antes",
+};
+
 // Resumen de una línea por tipo de evento, con la clase de color y el detalle expandible
 export function describe(ev: GEvent): { cls: string; text: string; detail?: string } {
   const d = ev.data || {};
@@ -64,6 +81,9 @@ export function describe(ev: GEvent): { cls: string; text: string; detail?: stri
         detail: d.clean ? undefined : full(d.hits),
       };
     case "leak.detected":
+      if (d.source === "scanner") {
+        return { cls: "caught", text: `FRENADO en el diff: ${d.kind} ${d.env_name} · ${d.encoding}` };
+      }
       return {
         cls: "leak",
         text: `FILTRACIÓN ${d.kind} ${d.env_name} · ${d.source}/${d.channel ?? "?"} · ${d.encoding}${d.late ? " · tardía" : ""}`,

@@ -155,7 +155,8 @@ async function main() {
   const file = path.join(opts.out, `${outId}.json`);
   await writeFile(file, JSON.stringify(recording, null, 1) + "\n");
 
-  const leaks = events.filter((e) => e.type === "leak.detected");
+  // Los hallazgos del escáner del diff (source: scanner) no salieron: no cuentan como filtración
+  const leaks = events.filter((e) => e.type === "leak.detected" && e.data?.source !== "scanner");
   const late = leaks.filter((e) => e.data?.late);
 
   // Índice de la galería: una entrada por grabación con el resumen que muestra /ataca
