@@ -48,6 +48,10 @@ function Center({ children }: { children: React.ReactNode }) {
 
 const at = (name: (typeof STEPS)[number]) => STEPS.indexOf(name);
 
+// El primer benchmark (22 nov, 1 repetición) no medía bien: solo vale el que termina después del corte
+const BENCH_FROM = Date.parse("2026-11-22T08:30:00-03:00");
+const fresh = (s: ResultsSummary) => Date.parse(s.generated_at.replace(/([+-]\d{2})(\d{2})$/, "$1:$2")) >= BENCH_FROM;
+
 // Casos reales que respaldan el gancho. Verificados en las fuentes citadas (22 nov 2026).
 const CASES = [
   {
@@ -147,7 +151,7 @@ export function LaminasFlow() {
   useEffect(() => {
     fetch("/results/summary.json", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((s: ResultsSummary) => (Array.isArray(s.cells) && s.cells.length ? setSummary(s) : Promise.reject()))
+      .then((s: ResultsSummary) => (Array.isArray(s.cells) && s.cells.length && fresh(s) ? setSummary(s) : Promise.reject()))
       .catch(() => setSummary("none"));
   }, []);
 
@@ -451,7 +455,7 @@ export function LaminasFlow() {
             <Kicker>Benchmark</Kicker>
             <h2 className="text-4xl leading-tight font-semibold sm:text-5xl">El caso promedio</h2>
             <p className="max-w-[60ch] text-muted-foreground text-balance">
-              Promedio sobre 5 tareas reales × los ataques del catálogo, más una corrida sin ataque. Claude Code con Haiku 5.5 en los cuatro carriles.
+              Promedio por carril sobre tareas reales y ataques del catálogo, con repeticiones. Claude Code con Haiku 5.5 real en los cuatro carriles.
             </p>
             {summary === "none" ? (
               <div className="w-full rounded-xl border border-dashed p-10 text-muted-foreground">
