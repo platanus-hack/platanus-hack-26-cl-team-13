@@ -65,7 +65,7 @@ export function BoxTerminal({
           )}
           {box.tainted && <ToneBadge tone="muted" className="border-tainted/40 bg-tainted-soft text-tainted">contaminada</ToneBadge>}
           {leakedReal && <ToneBadge tone="leak">filtró la llave real</ToneBadge>}
-          {!leakedReal && leakedHoney && <ToneBadge tone="honey">filtró un honeytoken</ToneBadge>}
+          {!leakedReal && leakedHoney && <ToneBadge tone="honey">se llevaron la llave falsa</ToneBadge>}
           {caught && <ToneBadge tone="safe">secreto frenado en el diff</ToneBadge>}
         </div>
       )}

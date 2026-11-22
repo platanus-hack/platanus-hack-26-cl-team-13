@@ -43,7 +43,7 @@ const STAGE_DOT: Record<ChainStage, string> = {
 const OUTCOME: Record<ChainOutcome, { tone: Tone; label: string }> = {
   secret_leaked: { tone: "leak", label: "salió la llave real" },
   caught_in_diff: { tone: "safe", label: "frenado en el diff" },
-  honeytoken_only: { tone: "honey", label: "solo salió la llave falsa" },
+  honeytoken_only: { tone: "honey", label: "solo salió la llave falsa (inofensiva)" },
   blocked: { tone: "blocked", label: "bloqueado" },
   egress_no_leak: { tone: "warn", label: "intentó salir, sin filtración" },
   clean: { tone: "safe", label: "sin rastro de ataque" },

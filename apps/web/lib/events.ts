@@ -105,6 +105,13 @@ export function describe(ev: GEvent): { cls: string; text: string; detail?: stri
       if (d.source === "scanner") {
         return { cls: "caught", text: `FRENADO en el diff: ${d.kind} ${d.env_name} · ${d.encoding}` };
       }
+      // Gemelo alto: lo que sale son llaves falsas. Es la trampa funcionando, no una fuga.
+      if (d.kind === "honeytoken") {
+        return {
+          cls: "leak",
+          text: `Se llevaron la llave FALSA ${d.env_name} (inofensiva) · ${d.channel ?? "?"}${d.encoding !== "plain" ? ` · ${d.encoding}` : ""}`,
+        };
+      }
       return {
         cls: "leak",
         text: `FILTRACIÓN ${d.kind} ${d.env_name} · ${d.source}/${d.channel ?? "?"} · ${d.encoding}${d.late ? " · tardía" : ""}`,
