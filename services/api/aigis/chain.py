@@ -98,6 +98,9 @@ def build_chain(events: Iterable[Event], run: Run, ignore_hosts: Iterable[str] =
         elif t == "scan.result" and d.get("hits"):
             add(ev, "caught", f"diff con {len(d['hits'])} secreto(s): " +
                 ", ".join(sorted({h.get('encoding', '?') for h in d['hits']})))
+        elif t == "leak.detected" and d.get("source") == "scanner":
+            # El escáner del diff lo encontró antes de entregar: la defensa funcionó, no salió
+            add(ev, "caught", f"diff con {d.get('env_name') or 'un secreto'} ({d.get('encoding')})")
         elif t == "leak.detected":
             kind = d.get("kind") or ("honeytoken" if d.get("pool") == "A" else "secret")
             add(ev, "leak", f"{kind} {d.get('env_name') or ''} por {d.get('channel') or d.get('source')} "

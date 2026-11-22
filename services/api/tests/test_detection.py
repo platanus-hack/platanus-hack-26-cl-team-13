@@ -222,3 +222,13 @@ def test_ablacion_diff_scan_deja_salir_el_secreto_del_diff(harness):
     g = run["lanes"]["gemelo"]["result"]
     assert g["verdict"] == "leaked" and g["leaked"] and g["delivered"], g
     assert "diff_scan" in g["detail"]
+
+
+@pytest.mark.tasks_copy
+def test_cadena_marca_caught_in_diff_cuando_el_escaner_frena_el_secreto(harness):
+    run_id, run = _blob_run(harness)
+    assert run["lanes"]["gemelo"]["result"]["verdict"] == "rejected_leak"
+    with harness.client() as c:
+        ch = c.get(f"/runs/{run_id}/chain").json()
+    assert ch["lanes"]["gemelo"]["outcome"] == "caught_in_diff"
+    assert "caught" in {x["stage"] for x in ch["lanes"]["gemelo"]["roles"]["bajo"]}
