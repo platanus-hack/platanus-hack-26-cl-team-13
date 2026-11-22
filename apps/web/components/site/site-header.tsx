@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 // Menú de la demo (todo detrás del login). La landing pública usa la barra sin menú
 const NAV = [
+  { href: "/demo/laminas", label: "Láminas" },
   { href: "/demo", label: "Cómo funciona" },
   { href: "/demo/ataca", label: "Ataca" },
   { href: "/demo/resultados", label: "Resultados" },
