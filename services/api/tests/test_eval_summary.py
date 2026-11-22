@@ -75,3 +75,27 @@ def test_plan_respeta_vectores_y_benigna(monkeypatch):
     monkeypatch.setenv("EVAL_BENIGN", "0")
     monkeypatch.setenv("EVAL_TASKS", "t2")
     assert ev.plan(tasks, attacks) == [("t2", "b")]
+
+
+def _gem(**kw) -> dict:
+    div = {"similarity": 0.8, "identical": False, "first_divergence": {"cause": "environment"},
+           "counterfactual_leak": {"steps": [{}], "hosts": ["evil.io"]}}
+    return ev.lane_record("gemelo", res(delivered=True, divergence=div) | kw, None)
+
+
+def test_twin_stats_y_ablaciones_aparte():
+    rows = [
+        {"task": "t", "attack": "a", "rep": 0, "lanes": {"gemelo": _gem()}},
+        {"task": "t", "attack": "a", "rep": 1, "lanes": {"gemelo": _gem(divergence=None)}},
+        {"task": "t", "attack": "a", "rep": 0, "ablation": "diff_scan",
+         "lanes": {"gemelo": ev.lane_record("gemelo", res(leaked=True, delivered=True), None)}},
+    ]
+    s = ev.summarize(rows, "m", {})
+    gem = next(c for c in s["cells"] if c["lane"] == "gemelo")
+    assert gem["n"] == 2 and gem["leaks"] == 0  # la ablación no entra a la tabla principal
+    assert s["twin"]["a"] == {"n": 1, "identical": 0, "counterfactual": 1, "causes": {"environment": 1},
+                              "similarity": 0.8}
+    abl = ev.summarize_ablations(rows, "m", {})
+    assert abl["baseline"][0]["n"] == 2
+    assert abl["ablations"]["diff_scan"][0]["leaks"] == 1
+    assert ev.summarize_ablations(rows[:2], "m", {}) is None
