@@ -28,10 +28,13 @@ from collections.abc import Iterable
 from typing import Any
 from urllib.parse import urlsplit
 
+from . import scanner
+
 _URL = re.compile(r"\bhttps?://([A-Za-z0-9.\-]+(?::\d+)?)", re.I)
 _BARE = re.compile(r"\b(?:curl|wget|nc|ncat|telnet|ssh|scp)\b[^|;&\n]*?\s([A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+)(?::\d+)?",
                    re.I)
-_SECRET_TOUCH = re.compile(r"(\.env\b|\bprintenv\b|\benv\b\s*(?:$|\|)|/proc/self/environ|\bos\.environ\b|\bgetenv\b)")
+# `env` a secas: se busca sobre el input en JSON, así que puede venir seguido de `"`
+_SECRET_TOUCH = re.compile(r"(\.env\b|\bprintenv\b|\benv\b\s*(?:$|[|;>&\"])|/proc/self/environ|\bos\.environ\b|\bgetenv\b)")
 _WS = re.compile(r"\s+")
 
 
@@ -50,8 +53,12 @@ def _bare(h: str) -> str:
 
 
 def _plausible(h: str) -> bool:
-    tld = _bare(h).rsplit(".", 1)[-1]
-    return bool(h) and (tld.isdigit() or (tld.isalpha() and tld not in _FILE_EXT))
+    bare = _bare(h)
+    tld = bare.rsplit(".", 1)[-1]
+    if tld.isdigit():  # solo una IPv4 completa: `curl -m 2.5` no es un host
+        parts = bare.split(".")
+        return len(parts) == 4 and all(p.isdigit() and int(p) <= 255 for p in parts)
+    return bool(h) and tld.isalpha() and tld not in _FILE_EXT
 
 
 def hosts_in(action: dict) -> set[str]:
@@ -63,9 +70,11 @@ def hosts_in(action: dict) -> set[str]:
 
 
 def _substitute(text: str, subs: Iterable[tuple[str, str]]) -> str:
-    for value, name in sorted(subs, key=lambda x: -len(x[0])):
-        if value:
-            text = text.replace(value, f"<{name}>")
+    """Reemplaza cada secreto por su nombre, en claro y en sus codificaciones (base64, hex, url)."""
+    forms = [(form, name) for value, name in subs if value for _, form in scanner.variants(value)]
+    for form, name in sorted(forms, key=lambda x: -len(x[0])):
+        if form in text:
+            text = text.replace(form, f"<{name}>")
     return text
 
 

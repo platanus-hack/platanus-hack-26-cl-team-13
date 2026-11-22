@@ -26,7 +26,7 @@ from .divergence import hosts_in
 from .models import Event, Run
 
 _UNTRUSTED = re.compile(r"(README|ISSUE\.md|/handoff/|\.aigis/untrusted|/p/run_|/docs/|conftest\.py)", re.I)
-_SECRET = re.compile(r"(\.env\b|\bprintenv\b|\benv\b\s*(?:$|\||;)|/proc/self/environ|os\.environ|getenv)")
+_SECRET = re.compile(r"(\.env\b|\bprintenv\b|\benv\b\s*(?:$|[|;>&\"])|/proc/self/environ|os\.environ|getenv)")
 _ENCODE = re.compile(r"(base64|b64encode|\bxxd\b|hexdump|\bod\s+-|openssl\s+enc|\bgzip\b|\.hex\(\)|binascii|"
                      r"\brev\b|urlencode|quote\()", re.I)
 ORDER = ("untrusted", "secret", "encode", "egress")

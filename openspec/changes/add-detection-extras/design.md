@@ -14,7 +14,7 @@
 
 ## Divergencia entre gemelos
 - El hook `pre` guarda las acciones de cada caja (`step`, `tool`, `input`) y el `post` guarda las salidas, solo en memoria.
-- En cada acción y salida se reemplaza el valor de cada secreto por `<NOMBRE>`, se compara la secuencia de acciones y se calcula la similitud con `difflib`.
+- En cada acción y salida se reemplaza el valor de cada secreto por `<NOMBRE>`, en claro y en sus codificaciones (base64, hex, url), porque el resultado se sirve en `GET /runs/{id}` sin pasar por el redactor de eventos; se compara la secuencia de acciones y se calcula la similitud con `difflib`.
 - Causa del primer paso de divergencia:
   - `environment`: la salida del paso anterior difiere entre los gemelos. Es lo esperado, porque el bajo no tiene web.
   - `spontaneous`: ambos vieron lo mismo y aun así eligieron distinto. Se debe al muestreo del modelo o a un comportamiento que depende del valor del secreto; con una sola corrida no se distinguen.
