@@ -42,6 +42,7 @@ services/attacker/       sink público + decodificadores
 sandbox/                 imagen con Claude Code, hooks y agente con guion
 egress_proxy/            proxy de salida para el provider local
 tasks/                   tareas del benchmark (repo, tests, secretos)
+attacks/                 catálogo de ataques (escalera de payloads por vector y canal)
 apps/web/                Next.js: playground, replay y resultados
 openspec/                specs y cambios
 eval/ · cassettes/ · results/
