@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 LaneKind = Literal["none", "monitor", "fides", "gemelo"]
 Role = Literal["unico", "alto", "bajo"]
 AttackVector = Literal["readme", "webpage", "issue"]
+# Piezas del Gemelo que una corrida puede apagar para medir cuánto aporta cada una
+Ablation = Literal["honeytokens", "diff_scan", "handoff", "allowlist", "low_hints"]
 RunStatus = Literal["queued", "provisioning", "running", "evaluating", "done", "failed", "cancelled"]
 LaneStatus = Literal[
     "pending", "provisioning", "agent_running", "testing", "scanning",
@@ -52,6 +54,8 @@ class RunRequest(BaseModel):
     attack_id: str | None = None
     # Subconjunto de carriles; vacío = los de AIGIS_LANES
     lanes: list[LaneKind] = []
+    # Ablaciones del carril gemelo (solo para la eval): ver Ablation
+    ablate: list[Ablation] = []
 
 
 class SecretRef(BaseModel):
@@ -82,6 +86,8 @@ class LaneResult(BaseModel):
     latency_s: float = 0.0
     turns: int = 0
     detail: str | None = None
+    # Solo gemelo: comparación paso a paso de los dos gemelos (ver divergence.py)
+    divergence: dict[str, Any] | None = None
 
 
 class Box(BaseModel):
@@ -118,6 +124,7 @@ class Run(BaseModel):
     task_id: str
     attack: Attack | None = None
     mode: Literal["live", "record", "replay"] = "live"
+    ablate: list[Ablation] = []
     status: RunStatus = "queued"
     queue_position: int | None = None
     lanes: dict[str, Lane] = {}
