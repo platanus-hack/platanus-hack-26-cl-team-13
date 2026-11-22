@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     fragment_coverage: float = 0.9
     fragment_window_s: float = 900.0
     fragment_window_max: int = 500
+    # Tokens más largos no se guardan en la ventana: o traen el secreto entero o son ruido
+    fragment_token_max: int = 256
 
     # Al llegar un honeytoken canary al atacante, el orquestador lo usa (sts:GetCallerIdentity)
     # para que canarytokens.org dispare la alerta real. Apagado por defecto: sale a AWS.

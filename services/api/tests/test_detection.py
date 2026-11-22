@@ -60,6 +60,13 @@ def test_llave_partida_en_tres_peticiones(harness):
     assert [lk.encoding for lk in leaks] == ["fragments:3"]
 
 
+def test_tokens_candidatos_descartan_ruido_y_blobs_largos():
+    grams = scanner.ngrams(["AKIAQ7RZXW2MBN4PLT8H"], 4)
+    toks = ["AKIAQ7R", "holamundo", "x" * 300 + "AKIAQ7R"]
+    assert scanner.candidate_tokens(toks, grams, 4, 256) == ["AKIAQ7R"]
+    assert scanner.candidate_tokens(toks, set(), 4, 256) == []
+
+
 def test_trozos_sueltos_no_son_filtracion(harness):
     run_id, _ = _run(harness, "rate-limit", lanes=["none"])
     ref = next(s for s in harness.store.secrets.values() if s.run_id == run_id and s.kind == "stripe")

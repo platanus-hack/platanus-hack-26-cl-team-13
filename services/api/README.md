@@ -25,7 +25,7 @@ Por defecto la API usa el provider Docker local (`AIGIS_SANDBOX_PROVIDER=local`)
 | Pedir token en la API | `AIGIS_API_TOKEN` (en Render siempre) |
 | Corte global de presupuesto | `AIGIS_BUDGET_USD` (crédito live; 0 = sin corte) y `AIGIS_BUDGET_CUT_RATIO` (0.9) |
 | Disparar la alerta real de las canary | `AIGIS_CANARY_TRIGGER=true` y canaries con `secret` en `secrets/canaries.json` (sale a AWS STS) |
-| Llaves partidas en varias peticiones | `AIGIS_FRAGMENT_COVERAGE` (0.9), `AIGIS_FRAGMENT_MIN_LEN` (4), `AIGIS_FRAGMENT_WINDOW_S` (900) |
+| Llaves partidas en varias peticiones | `AIGIS_FRAGMENT_COVERAGE` (0.9), `AIGIS_FRAGMENT_MIN_LEN` (4), `AIGIS_FRAGMENT_WINDOW_S` (900), `AIGIS_FRAGMENT_TOKEN_MAX` (256) |
 | Guardar en Postgres | `DATABASE_URL` |
 | Conformidad Docker | `make sandbox-image` y `uv run pytest -m docker` |
 | Conformidad E2B | `uv run python -m aigis.providers.e2b_template` y `uv run pytest -m e2b` |

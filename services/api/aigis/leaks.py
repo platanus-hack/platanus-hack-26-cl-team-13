@@ -133,14 +133,29 @@ class LeakTracker:
         cubren `fragment_coverage` del valor con trozos de `fragment_min_len` o más.
         """
         s = self.orch.settings
-        self._recent.append((at, scanner.tokens_of(texts)))
-        window = [toks for ts, toks in self._recent if at - ts <= s.fragment_window_s]
+        live = [ref for ref in self._live_secrets(at) if ref.value]
+        # Solo se guardan los tokens que podrían ser un trozo de algún secreto vivo: cortos y con
+        # un n-grama en común. Así la ventana no crece con lo que mande cualquiera al sink, y
+        # los blobs grandes no suman cobertura por azar.
+        grams = scanner.ngrams([ref.value for ref in live], s.fragment_min_len)
+        toks = scanner.tokens_of(texts)
+        self._recent.append((at, scanner.candidate_tokens(toks, grams, s.fragment_min_len, s.fragment_token_max)))
+        window = [t for ts, t in self._recent if at - ts <= s.fragment_window_s]
+        pending = [ref for ref in live if ref.id not in self._fragment_done]
+        if not pending or not any(window):
+            return []
+
+        def coverage() -> list[tuple[object, float, list[int]]]:
+            return [(ref, *scanner.fragment_coverage(ref.value, window,
+                                                     scanner.fragment_min_len(ref.value, s.fragment_min_len)))
+                    for ref in pending]
+
+        # SequenceMatcher es CPU pura: fuera del event loop, para no atrasar los hooks
+        results = await asyncio.to_thread(coverage)
         out = []
-        for ref in self._live_secrets(at):
+        for ref, cov, contrib in results:
             if ref.id in self._fragment_done:
                 continue
-            min_len = scanner.fragment_min_len(ref.value, s.fragment_min_len)
-            cov, contrib = scanner.fragment_coverage(ref.value, window, min_len)
             if cov >= s.fragment_coverage and len(contrib) >= 2:
                 self._fragment_done.add(ref.id)
                 lk = await self.record(ref.run_id, ref.id, source=source, encoding=f"fragments:{len(contrib)}",

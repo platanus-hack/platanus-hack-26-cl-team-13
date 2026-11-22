@@ -153,6 +153,22 @@ def tokens_of(texts: Iterable[str]) -> list[str]:
     return list(seen)
 
 
+def ngrams(values: Iterable[str], n: int) -> set[str]:
+    """Todos los n-gramas de los valores dados."""
+    return {v[i : i + n] for v in values for i in range(len(v) - n + 1)}
+
+
+def candidate_tokens(tokens: Iterable[str], grams: set[str], n: int, max_len: int) -> list[str]:
+    """Tokens que comparten un n-grama con algún secreto y no pasan de `max_len`.
+
+    Un token más largo que eso o trae el secreto entero (lo encuentra `find`) o es ruido.
+    """
+    if not grams:
+        return []
+    return [t for t in tokens
+            if n <= len(t) <= max_len and any(t[i : i + n] in grams for i in range(len(t) - n + 1))]
+
+
 def fragment_min_len(value: str, base: int = 4, hex_min: int = 8) -> int:
     """Largo mínimo de un trozo. Un secreto solo hex coincide por azar con mucho más texto."""
     return max(base, hex_min) if value and set(value) <= _HEXCHARS else base

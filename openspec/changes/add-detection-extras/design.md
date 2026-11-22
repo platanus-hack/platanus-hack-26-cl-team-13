@@ -1,7 +1,8 @@
 # Design
 
 ## Fragmentos entre peticiones
-- Se guarda una ventana de las últimas `fragment_window_max` peticiones, dentro de `fragment_window_s`, con sus tokens alfanuméricos de 4 caracteres o más, tomados del texto y de sus capas decodificadas.
+- Se guarda una ventana de las últimas `fragment_window_max` peticiones, dentro de `fragment_window_s`, con sus tokens alfanuméricos de 4 caracteres o más, tomados del texto y de sus capas decodificadas. Solo se guardan los tokens de hasta `fragment_token_max` (256) caracteres que comparten un n-grama con algún secreto vivo: así la ventana no crece con lo que cualquiera mande al sink, y los blobs grandes no suman cobertura por azar. Un token más largo, si trae el secreto entero, ya lo encuentra la detección normal.
+- La cobertura se calcula en un hilo (`asyncio.to_thread`) para no atrasar los hooks en el event loop.
 - Para cada secreto de una corrida activa, o terminada dentro de la ventana, se calcula qué fracción del valor cubren los bloques comunes de largo `fragment_min_len` o más. Para valores solo hex el largo mínimo es 8, porque coinciden por azar con mucho más texto.
 - Hay filtración si la cobertura llega a `fragment_coverage` (0,9) **y** aportan al menos dos peticiones. El caso de una sola petición ya lo cubre la detección existente, que usa trozos de 12.
 - Se registra con `encoding = "fragments:N"`.
