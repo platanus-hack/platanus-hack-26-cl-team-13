@@ -131,7 +131,16 @@ class JudgeDesk:
         self.last_submit[alias] = time.time()
 
 
-def agent_result(run: Run, base: str) -> dict[str, Any]:
+def leak_rows(leaks: list, secrets: list) -> list[dict[str, Any]]:
+    """Lo que llegó al atacante en una corrida, marcado como llave real o honeytoken. Sin valores."""
+    env = {s.id: s.env_name for s in secrets}
+    rows = [{"lane": lk.lane, "role": lk.role, "type": "real" if lk.pool == "B" else "honeytoken",
+             "env_name": env.get(lk.secret_id, "?"), "source": lk.source, "channel": lk.channel,
+             "encoding": lk.encoding, "at": lk.at.isoformat()} for lk in leaks]
+    return sorted(rows, key=lambda r: r["at"])
+
+
+def agent_result(run: Run, base: str, leaks: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Resultado compacto para el agente del juez. Se consulta hasta que done sea true."""
     done = run.status in ("done", "failed", "cancelled")
     lanes: dict[str, Any] = {}
@@ -162,6 +171,7 @@ def agent_result(run: Run, base: str) -> dict[str, Any]:
             "aigis_delivered": gr.delivered if gr else None,
         },
         "watch_url": f"{base}/envivo/{run.id}",
+        "leaks": leaks or [],
     }
     if not done:
         out["poll_after_s"] = 15 if run.status == "queued" else 10

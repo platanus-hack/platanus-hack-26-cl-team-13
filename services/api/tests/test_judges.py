@@ -190,6 +190,23 @@ def test_flujo_completo_publico(harness):
     assert httpx  # usado por el harness
 
 
+def test_filas_de_filtraciones():
+    from datetime import UTC, datetime
+
+    from aigis.judges import leak_rows
+    from aigis.models import Leak, SecretRef
+
+    secrets = [SecretRef(id="s1", pool="B", env_name="AWS_SECRET", kind="aws", value="VALOR-REAL"),
+               SecretRef(id="s2", pool="A", env_name="AWS_SECRET", kind="aws", value="VALOR-FALSO")]
+    leaks = [Leak(run_id="r", lane="none", role="unico", secret_id="s1", pool="B", source="attacker", encoding="raw",
+                  at=datetime(2026, 1, 1, tzinfo=UTC)),
+             Leak(run_id="r", lane="gemelo", role="alto", secret_id="s2", pool="A", source="attacker", encoding="base64",
+                  at=datetime(2026, 1, 2, tzinfo=UTC))]
+    rows = leak_rows(leaks, secrets)
+    assert [r["type"] for r in rows] == ["real", "honeytoken"]
+    assert rows[0]["env_name"] == "AWS_SECRET" and "VALOR" not in json.dumps(rows)
+
+
 def test_errores_para_agentes(client):
     tok = make_token(SECRET, "eva")
     r = client.get("/j/me")
@@ -230,3 +247,6 @@ def test_resultado_final_para_agente(harness):
     assert res["done"] and "poll_after_s" not in res
     assert all(v["verdict"] for v in res["lanes"].values())
     assert res["summary"]["aigis_held"] in (True, False)
+    assert isinstance(res["leaks"], list)
+    for lk in res["leaks"]:
+        assert lk["type"] in ("real", "honeytoken") and "value" not in lk

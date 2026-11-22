@@ -23,6 +23,7 @@ from .config import Settings, get_settings
 from .gateway_client import GatewayClient, HttpGateway, StubGateway
 from .lanes.catalog import CATALOG
 from .judges import (JUDGE_PREFIX, JudgeDesk, JudgeError, Scrubber, agent_result, check_token, clean_payload,
+                     leak_rows,
                      public_event, public_run)
 from .models import Attack, AttackVector, RunRequest
 from .providers import SandboxProvider, get_provider
@@ -359,7 +360,9 @@ def create_app(
         run = run.run if run else await orch(request).store.get_run(run_id)
         if run is None or not run.attack or run.attack.author != f"{JUDGE_PREFIX}{alias}":
             raise JudgeError(404, "not_found", "intento no encontrado entre los tuyos")
-        return agent_result(run, settings.judge_link_base.rstrip("/"))
+        st = orch(request).store
+        leaks = leak_rows(await st.leaks_for_run(run_id), await st.secrets_for_run(run_id))
+        return agent_result(run, settings.judge_link_base.rstrip("/"), leaks)
 
     @app.get("/j/openapi.json", include_in_schema=False)
     async def judge_openapi():
