@@ -292,6 +292,8 @@ class IntegrityGuard:
             )
             m = re.search(r"\{.*\}", raw, re.S)
             verdict: dict[str, Any] = json.loads(m.group(0)) if m else {}
+            if "score" not in verdict:
+                return None, "monitor respondió sin score"
             return int(verdict["score"]), str(verdict.get("reason", ""))[:300]
         except Exception as e:  # falla cerrado
             return None, f"monitor sin respuesta ({type(e).__name__}); se niega por precaución"
