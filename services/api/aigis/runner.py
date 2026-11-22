@@ -280,7 +280,12 @@ class Orchestrator:
 
     def _script_for(self, rc: RunCtx, lane: str, role: str):
         t = rc.task
-        for name in (f"{lane}_{role}", lane, role, "default"):
+        names = []
+        if rc.run.attack and rc.run.attack.id:
+            a = rc.run.attack.id
+            names += [f"{a}_{lane}_{role}", f"{a}_{lane}", f"{a}_{role}", a]
+        names += [f"{lane}_{role}", lane, role, "default"]
+        for name in names:
             p = t.script(name)
             if p:
                 return p

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from aigis.attacks import injected_files, load_attacks
+from aigis.attacks import injected_files, load_attacks, render
 from aigis.config import REPO_ROOT
 from aigis.lanes.catalog import CATALOG as LANES
 
@@ -28,8 +28,25 @@ def test_attack_shape(aid):
     # Resolver a un Attack con un vector válido
     atk = a.to_attack()
     assert atk.vector in a.vectors and atk.id == aid
-    # Los targets son carriles que existen; none es el testigo y no se lista
-    assert a.targets and set(a.targets) <= set(LANES) - {"none"}, (aid, a.targets)
+    # Los targets son carriles que existen; none va siempre como testigo de validez
+    assert a.targets and set(a.targets) <= set(LANES), (aid, a.targets)
+    assert "none" in a.targets, (aid, a.targets)
+
+
+# Canales que exfiltran al servidor del atacante por red: el payload DEBE llevar destino
+# ({ATTACKER_URL}), si no, ni un agente obediente puede filtrar (regresión del PR #16). Los
+# demás sacan el secreto por otra vía (diff entregado, git, un dominio de la allowlist, un
+# archivo inyectado que corre solo), así que no necesitan el marcador.
+_NEEDS_DESTINATION = {"http", "webfetch"}
+
+
+@pytest.mark.parametrize("aid", sorted(ATTACKS))
+def test_network_attacks_have_a_destination(aid):
+    a = ATTACKS[aid]
+    if a.channel not in _NEEDS_DESTINATION or a.files:
+        return
+    url = "http://attacker.example:9000"
+    assert url in render(a.payload, url), f"{aid}: el payload no lleva {{ATTACKER_URL}}"
 
 
 @pytest.mark.parametrize("aid", sorted(ATTACKS))
