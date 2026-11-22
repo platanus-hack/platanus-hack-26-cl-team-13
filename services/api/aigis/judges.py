@@ -67,6 +67,20 @@ def author_alias(run: Run) -> str | None:
     return a.removeprefix(JUDGE_PREFIX) if a and a.startswith(JUDGE_PREFIX) else None
 
 
+class JudgeError(Exception):
+    """Error para el agente del juez: código fijo, mensaje y, si aplica, cuándo reintentar."""
+
+    def __init__(self, status: int, code: str, detail: str, retry_after: int | None = None) -> None:
+        super().__init__(detail)
+        self.status, self.code, self.detail, self.retry_after = status, code, detail, retry_after
+
+    def body(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"error": self.code, "detail": self.detail}
+        if self.retry_after is not None:
+            out["retry_after_s"] = self.retry_after
+        return out
+
+
 class JudgeDesk:
     """Topes y ritmo de envío de los jueces. En memoria: un reinicio libera el ritmo,
     pero las cuotas se cuentan sobre las corridas guardadas, así que no se reinician."""
@@ -94,26 +108,64 @@ class JudgeDesk:
         }
 
     def check(self, alias: str, runs: list[Run]) -> None:
-        """Lanza ValueError con un mensaje para el juez si no puede enviar ahora."""
+        """Lanza JudgeError (429) si el juez no puede enviar ahora."""
         if self.paused:
-            raise ValueError("los envíos de jueces están en pausa")
+            raise JudgeError(429, "paused", "los envíos de jueces están en pausa", 300)
         st = self.status(alias, runs)
         if st["active_run"]:
-            raise ValueError(f"ya tienes una corrida en curso ({st['active_run']})")
+            raise JudgeError(429, "active_run", f"ya tienes una corrida en curso ({st['active_run']}); "
+                             "espera su resultado", 30)
         if st["runs_used"] >= self.s.judge_max_runs:
-            raise ValueError(f"usaste tus {self.s.judge_max_runs} corridas")
+            raise JudgeError(429, "quota", f"usaste tus {self.s.judge_max_runs} corridas")
         if st["wait_s"] > 0:
-            raise ValueError(f"espera {st['wait_s']} s antes del próximo envío")
+            raise JudgeError(429, "wait", f"espera {st['wait_s']} s antes del próximo envío", st["wait_s"])
         judged = [r for r in runs if author_alias(r)]
         if len(judged) >= self.s.judge_total_runs:
-            raise ValueError("se acabó el cupo de corridas de jueces del evento")
+            raise JudgeError(429, "event_cap", "se acabó el cupo de corridas de jueces del evento")
         if sum(r.status == "queued" for r in judged) >= self.s.judge_queue_max:
-            raise ValueError("la cola está llena, prueba en unos minutos")
+            raise JudgeError(429, "queue_full", "la cola está llena", 60)
         if self.spent(judged) + self.s.run_budget_usd > self.s.judge_total_budget_usd:
-            raise ValueError("se acabó el presupuesto de jueces del evento")
+            raise JudgeError(429, "budget", "se acabó el presupuesto de jueces del evento")
 
     def mark(self, alias: str) -> None:
         self.last_submit[alias] = time.time()
+
+
+def agent_result(run: Run, base: str) -> dict[str, Any]:
+    """Resultado compacto para el agente del juez. Se consulta hasta que done sea true."""
+    done = run.status in ("done", "failed", "cancelled")
+    lanes: dict[str, Any] = {}
+    for k, lane in run.lanes.items():
+        r = lane.result
+        lanes[k] = {
+            "status": lane.status,
+            "verdict": r.verdict if r else None,
+            "leaked_real_key": r.leaked if r else None,
+            "leaked_fake_key": r.honeytoken_leaked if r else None,
+            "tests_passed": r.task_passed if r else None,
+            "network_cut": r.network_cut if r else None,
+        }
+    g = run.lanes.get("gemelo")
+    gr = g.result if g else None
+    out: dict[str, Any] = {
+        "run_id": run.id,
+        "status": run.status,
+        "done": done,
+        "queue_position": run.queue_position,
+        "task_id": run.task_id,
+        "vector": run.attack.vector if run.attack else None,
+        "lanes": lanes,
+        "summary": {
+            "real_key_leaked_in": sorted(k for k, v in lanes.items() if v["leaked_real_key"]),
+            "fake_key_leaked_in": sorted(k for k, v in lanes.items() if v["leaked_fake_key"]),
+            "aigis_held": (not gr.leaked) if gr else None,
+            "aigis_delivered": gr.delivered if gr else None,
+        },
+        "watch_url": f"{base}/envivo/{run.id}",
+    }
+    if not done:
+        out["poll_after_s"] = 15 if run.status == "queued" else 10
+    return out
 
 
 # ----- vista pública -----------------------------------------------------------------

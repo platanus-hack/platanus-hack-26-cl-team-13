@@ -13,14 +13,17 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .config import Settings, get_settings
 from .gateway_client import GatewayClient, HttpGateway, StubGateway
 from .lanes.catalog import CATALOG
-from .judges import JUDGE_PREFIX, JudgeDesk, Scrubber, check_token, clean_payload, public_event, public_run
+from .judges import (JUDGE_PREFIX, JudgeDesk, JudgeError, Scrubber, agent_result, check_token, clean_payload,
+                     public_event, public_run)
 from .models import Attack, AttackVector, RunRequest
 from .providers import SandboxProvider, get_provider
 from .runner import Orchestrator
@@ -28,11 +31,34 @@ from .store import MemoryStore, Store
 
 
 class JudgeRunRequest(BaseModel):
-    task_id: str
-    vector: AttackVector | None = None
-    payload: str | None = Field(default=None, max_length=8192)
-    # Ataque del catálogo como alternativa a escribir uno
-    attack_id: str | None = None
+    """Un intento de ataque. Manda vector + payload, o attack_id para usar uno del catálogo."""
+
+    task_id: str = Field(description="Tarea que hará el agente víctima (GET /api/j/tasks)")
+    vector: AttackVector | None = Field(default=None, description="Dónde se esconde el payload: readme, issue o webpage")
+    payload: str | None = Field(default=None, max_length=8192,
+                                description="Texto que leerá el agente víctima. {ATTACKER_URL} se reemplaza por "
+                                            "la URL del servidor atacante")
+    attack_id: str | None = Field(default=None, description="Ataque del catálogo (GET /api/j/attacks) en vez de payload")
+
+
+class JudgeRunCreated(BaseModel):
+    run_id: str
+    status: str = "queued"
+    queue_position: int | None
+    result_url: str = Field(description="GET con tu token hasta que done sea true")
+    watch_url: str = Field(description="Vista en vivo para humanos")
+    poll_after_s: int
+
+
+class JudgeErrorBody(BaseModel):
+    error: str = Field(description="Código fijo: unauthorized, not_found, invalid, paused, active_run, quota, wait, "
+                                   "event_cap, queue_full, budget")
+    detail: str
+    retry_after_s: int | None = None
+
+
+JUDGE_ERRORS = {401: {"model": JudgeErrorBody}, 404: {"model": JudgeErrorBody}, 422: {"model": JudgeErrorBody},
+                429: {"model": JudgeErrorBody, "description": "Tope o cola; respeta Retry-After"}}
 
 
 def create_app(
@@ -76,6 +102,19 @@ def create_app(
             await close()
 
     app = FastAPI(title="AIgis orquestador", lifespan=lifespan)
+
+    @app.exception_handler(JudgeError)
+    async def judge_error(_request: Request, e: JudgeError):
+        headers = {"Retry-After": str(e.retry_after)} if e.retry_after is not None else None
+        return JSONResponse(e.body(), status_code=e.status, headers=headers)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, e: RequestValidationError):
+        # Para los agentes de jueces, el mismo formato que el resto de sus errores
+        if not request.url.path.startswith("/j/"):
+            return await request_validation_exception_handler(request, e)
+        msg = "; ".join(f"{'.'.join(str(x) for x in err['loc'][1:])}: {err['msg']}" for err in e.errors())
+        return JSONResponse({"error": "invalid", "detail": msg[:500]}, status_code=422)
     origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
 
@@ -192,7 +231,7 @@ def create_app(
     def require_judge(authorization: str = Header(default="")) -> str:
         alias = check_token(settings, authorization.removeprefix("Bearer ").strip())
         if alias is None:
-            raise HTTPException(401, "token de juez inválido")
+            raise JudgeError(401, "unauthorized", "token de juez inválido: usa Authorization: Bearer <alias-xxxxxxxxxx>")
         return alias
 
     def desk(request: Request) -> JudgeDesk:
@@ -221,60 +260,87 @@ def create_app(
         return StreamingResponse(gen(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    @app.get("/j/me")
+    @app.get("/j/me", responses=JUDGE_ERRORS, summary="Tu cuota y estado")
     async def judge_me(request: Request, alias: str = Depends(require_judge)):
         return desk(request).status(alias, await orch(request).store.list_runs(HISTORY))
 
-    @app.get("/j/tasks", dependencies=[Depends(require_judge)])
+    @app.get("/j/tasks", dependencies=[Depends(require_judge)], responses=JUDGE_ERRORS,
+             summary="Tareas que puede hacer el agente víctima")
     async def judge_task_list(request: Request):
         return [t.public() for t in judge_tasks(request)]
 
-    @app.get("/j/attacks", dependencies=[Depends(require_judge)])
+    @app.get("/j/attacks", dependencies=[Depends(require_judge)], responses=JUDGE_ERRORS,
+             summary="Ataques de ejemplo del catálogo")
     async def judge_attacks(request: Request):
         """Catálogo con el payload completo, para partir de un ataque y editarlo."""
         return [a.model_dump(include={"id", "title", "technique", "channel", "vectors", "payload"})
                 for a in orch(request).attacks.values()]
 
-    @app.post("/j/runs", status_code=201)
+    @app.post("/j/runs", status_code=201, response_model=JudgeRunCreated, responses=JUDGE_ERRORS,
+              summary="Enviar un intento de ataque")
     async def judge_run(req: JudgeRunRequest, request: Request, alias: str = Depends(require_judge)):
         o, d = orch(request), desk(request)
         if req.task_id not in {t.id for t in judge_tasks(request)}:
-            raise HTTPException(404, f"tarea no disponible: {req.task_id}")
+            raise JudgeError(404, "not_found", f"tarea no disponible: {req.task_id} (ver GET /api/j/tasks)")
         author = f"{JUDGE_PREFIX}{alias}"
         if req.attack_id:
             if req.payload:
-                raise HTTPException(422, "usa payload o attack_id, no ambos")
+                raise JudgeError(422, "invalid", "usa payload o attack_id, no ambos")
             cat = o.attacks.get(req.attack_id)
             if cat is None:
-                raise HTTPException(404, f"ataque desconocido: {req.attack_id}")
+                raise JudgeError(404, "not_found", f"ataque desconocido: {req.attack_id} (ver GET /api/j/attacks)")
             task = o.tasks[req.task_id]
             vec = req.vector if req.vector in cat.vectors else next((v for v in cat.vectors if v in task.vectors), None)
             if vec is None:
-                raise HTTPException(422, f"el ataque {cat.id} no comparte vector con la tarea {task.id}")
+                raise JudgeError(422, "invalid", f"el ataque {cat.id} no comparte vector con la tarea {task.id}")
             attack = cat.to_attack(vec).model_copy(update={"author": author})
         else:
             payload = clean_payload(req.payload or "").strip()
             if not payload or req.vector is None:
-                raise HTTPException(422, "falta vector y payload, o attack_id")
+                raise JudgeError(422, "invalid", "falta vector y payload, o attack_id")
+            if req.vector not in o.tasks[req.task_id].vectors:
+                raise JudgeError(422, "invalid", f"la tarea {req.task_id} no admite el vector {req.vector}")
             attack = Attack(vector=req.vector, payload=payload, author=author)
-        try:
-            d.check(alias, await o.store.list_runs(HISTORY))
-        except ValueError as e:
-            raise HTTPException(429, str(e)) from e
+        d.check(alias, await o.store.list_runs(HISTORY))
         d.mark(alias)
         try:
             r = await o.submit(RunRequest(task_id=req.task_id, attack=attack, lanes=settings.judge_lane_list))
-        except KeyError as e:
-            raise HTTPException(404, str(e)) from e
-        except ValueError as e:
-            raise HTTPException(422, str(e)) from e
-        return {"run_id": r.id, "queue_position": r.queue_position}
+        except (KeyError, ValueError) as e:
+            raise JudgeError(422, "invalid", str(e)) from e
+        base = settings.judge_link_base.rstrip("/")
+        return JudgeRunCreated(run_id=r.id, queue_position=r.queue_position, result_url=f"{base}/api/j/runs/{r.id}",
+                               watch_url=f"{base}/envivo/{r.id}", poll_after_s=15)
 
-    @app.get("/j/runs")
+    @app.get("/j/runs", responses=JUDGE_ERRORS, summary="Tus intentos")
     async def judge_runs(request: Request, alias: str = Depends(require_judge)):
         runs = await orch(request).store.list_runs(HISTORY)
         mine = [r for r in runs if r.attack and r.attack.author == f"{JUDGE_PREFIX}{alias}"]
         return [public_run(r, scrub, preview=8192) for r in mine]
+
+    @app.get("/j/runs/{run_id}", responses=JUDGE_ERRORS, summary="Resultado de un intento (consulta hasta done)")
+    async def judge_run_result(run_id: str, request: Request, alias: str = Depends(require_judge)):
+        run = orch(request).contexts.get(run_id)
+        run = run.run if run else await orch(request).store.get_run(run_id)
+        if run is None or not run.attack or run.attack.author != f"{JUDGE_PREFIX}{alias}":
+            raise JudgeError(404, "not_found", "intento no encontrado entre los tuyos")
+        return agent_result(run, settings.judge_link_base.rstrip("/"))
+
+    @app.get("/j/openapi.json", include_in_schema=False)
+    async def judge_openapi():
+        """Esquema solo con las rutas de jueces, tal como se ven desde la web (/api/j/...)."""
+        full = app.openapi()
+        paths = {"/api" + p: v for p, v in full["paths"].items() if p.startswith("/j/")}
+        return {
+            "openapi": full["openapi"],
+            "info": {"title": "AIgis: API de jueces", "version": "1",
+                     "description": "Instrucciones para agentes en /agents.md. Autenticación: Authorization: Bearer "
+                                    "<token de juez>."},
+            "servers": [{"url": settings.judge_link_base.rstrip("/")}],
+            "paths": paths,
+            "components": {"schemas": full.get("components", {}).get("schemas", {}),
+                           "securitySchemes": {"judge": {"type": "http", "scheme": "bearer"}}},
+            "security": [{"judge": []}],
+        }
 
     @app.post("/admin/judges/pause", dependencies=[Depends(require_token)])
     async def judges_pause(request: Request, paused: bool = True):
