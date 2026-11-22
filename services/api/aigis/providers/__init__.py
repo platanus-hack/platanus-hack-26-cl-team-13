@@ -94,8 +94,6 @@ class SandboxSpec:
     cpus: float = 1.0
     memory_mb: int = 2048
     ttl_s: int = 1800
-    # La caja corre bubblewrap adentro (sandbox nativo de Claude Code): necesita user namespaces
-    nested_sandbox: bool = False
 
 
 @dataclass

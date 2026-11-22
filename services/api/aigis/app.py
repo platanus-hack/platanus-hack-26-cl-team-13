@@ -148,7 +148,7 @@ def create_app(
     async def health(request: Request):
         o = orch(request)
         return {"ok": True, "provider": o.provider.name, "gateway_ok": await o.gateway.health(),
-                "agent": settings.agent, "lanes": settings.lane_list}
+                "agent": settings.agent, "lanes": settings.lane_list, "model": settings.model}
 
     @app.get("/tasks", dependencies=[Depends(require_token)])
     async def tasks(request: Request):
@@ -165,6 +165,11 @@ def create_app(
 
     @app.post("/runs", status_code=201, dependencies=[Depends(require_token)])
     async def create_run(req: RunRequest, request: Request):
+        b = await orch(request).budget()
+        if not b["live_enabled"]:
+            # Mismo contrato que JudgeError (judges-access): la web lo maneja en un solo lugar
+            return JSONResponse({"error": "budget", "detail": "se acabó el presupuesto de corridas en vivo; "
+                                 "mira las grabaciones", "retry_after_s": None}, status_code=429)
         try:
             r = await orch(request).submit(req)
         except KeyError as e:
@@ -218,6 +223,32 @@ def create_app(
         if lane == "gemelo" and res is not None and not res.delivered:
             raise HTTPException(409, f"diff no entregado: {res.verdict}")
         return await orch(request).redact_persisted(run_id, diff)
+
+    @app.get("/runs/{run_id}/usage", dependencies=[Depends(require_token)])
+    async def run_usage(run_id: str, request: Request):
+        """Uso real que reportó el gateway (claves de by_lane: "<carril>/<rol>" y "<carril>/monitor")."""
+        await get_run_obj(request, run_id)
+        u = await orch(request).store.get_usage(run_id)
+        if u is None:
+            raise HTTPException(404, "sin uso registrado")
+        keep = ("cost_usd", "requests", "input_tokens", "output_tokens",
+                "cache_creation_input_tokens", "cache_read_input_tokens", "by_lane")
+        return {"run_id": run_id, **{k: u[k] for k in keep if k in u}}
+
+    @app.get("/runs/{run_id}/chain", dependencies=[Depends(require_token)])
+    async def run_chain(run_id: str, request: Request):
+        """Cadena del ataque por carril y caja, armada desde los eventos guardados (ver chain.py)."""
+        from .chain import build_chain
+        from .divergence import hosts_of_urls
+
+        run = await get_run_obj(request, run_id)
+        events = await orch(request).store.events(run_id)
+        return build_chain(events, run, ignore_hosts=hosts_of_urls(settings.gateway_url_sandbox,
+                                                                   settings.hook_base_sandbox))
+
+    @app.get("/budget", dependencies=[Depends(require_token)])
+    async def budget(request: Request):
+        return await orch(request).budget()
 
     @app.get("/queue", dependencies=[Depends(require_token)])
     async def queue(request: Request):

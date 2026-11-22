@@ -1,6 +1,6 @@
 // Tipos del orquestador (services/api/gemelo/models.py), vista pública
 
-export type LaneKind = "none" | "cc_sandbox" | "auto_mode" | "monitor" | "fides" | "gemelo";
+export type LaneKind = "none" | "monitor" | "fides" | "gemelo";
 export type Role = "unico" | "bajo" | "alto";
 export type Vector = "readme" | "webpage" | "issue";
 
@@ -18,6 +18,29 @@ export interface LaneResult {
   latency_s: number;
   turns: number;
   detail: string | null;
+  // Solo gemelo: comparación de los dos gemelos (services/api/aigis/divergence.py)
+  divergence?: TwinDivergence | null;
+}
+
+export interface DivergenceStep {
+  step: number | null;
+  tool: string | null;
+  summary: string;
+}
+
+export interface TwinDivergence {
+  identical: boolean;
+  similarity: number;
+  steps: { alto: number; bajo: number };
+  first_divergence: {
+    index: number;
+    cause: "environment" | "spontaneous" | "length";
+    alto: DivergenceStep | null;
+    bajo: DivergenceStep | null;
+  } | null;
+  egress_attempts: { alto: string[]; bajo: string[] };
+  // Lo que se habría filtrado sin el aislamiento: el bajo intentó salir tras tocar un secreto
+  counterfactual_leak: { steps: DivergenceStep[]; hosts: string[] } | null;
 }
 
 export interface Box {
@@ -48,6 +71,7 @@ export interface Run {
   task_id: string;
   attack: { vector: Vector; payload: string; author: string | null } | null;
   mode: string;
+  ablate?: string[];
   status: string;
   queue_position: number | null;
   lanes: Record<string, Lane>;
@@ -80,15 +104,27 @@ export interface Health {
   gateway_ok: boolean;
   agent: string;
   lanes: string[];
+  model?: string;
+}
+
+// GET /budget: gasto real (gateway) más la reserva de las corridas sin terminar
+export interface Budget {
+  spent_usd: number;
+  committed_usd: number;
+  reserved_per_run_usd: number;
+  in_flight: number;
+  budget_usd: number; // 0 = sin corte
+  ratio: number;
+  limit_usd: number;
+  live_enabled: boolean;
+  runs_counted: number;
 }
 
 // Orden de la API (catálogo de GET /lanes): base, estado del arte y AIgis al final
-export const LANE_ORDER: LaneKind[] = ["none", "cc_sandbox", "auto_mode", "monitor", "fides", "gemelo"];
+export const LANE_ORDER: LaneKind[] = ["none", "monitor", "fides", "gemelo"];
 
 export const LANE_LABEL: Record<string, string> = {
   none: "Sin defensa",
-  cc_sandbox: "CC endurecido",
-  auto_mode: "Auto mode",
   monitor: "Monitor LLM",
   fides: "FIDES",
   gemelo: "AIgis",

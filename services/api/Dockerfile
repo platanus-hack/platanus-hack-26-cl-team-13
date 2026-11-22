@@ -17,6 +17,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY services/api/aigis ./aigis
 COPY tasks /app/tasks
 COPY sandbox /app/sandbox
+# Catálogo de ataques (runner.py lo carga de tasks/../attacks)
+COPY attacks /app/attacks
 
 ENV PATH="/app/services/api/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

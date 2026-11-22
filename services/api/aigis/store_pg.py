@@ -136,3 +136,12 @@ class PostgresStore:
             "insert into aigis_usage (run_id, data) values ($1, $2::jsonb) "
             "on conflict (run_id) do update set data = excluded.data",
             run_id, json.dumps(usage))
+
+    async def get_usage(self, run_id: str) -> dict | None:
+        v = await self.pool.fetchval("select data from aigis_usage where run_id = $1", run_id)
+        return _load(v) if v else None
+
+    async def total_cost(self) -> tuple[float, int]:
+        row = await self.pool.fetchrow(
+            "select coalesce(sum((data->>'cost_usd')::float), 0) as spent, count(*) as n from aigis_usage")
+        return float(row["spent"]), int(row["n"])

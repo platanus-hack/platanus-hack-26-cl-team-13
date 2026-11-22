@@ -4,6 +4,8 @@
 
 **Agentes de IA que no pueden robar tus secretos.** Platanus Hack 26: Santiago ft. Buk · Track 🛡️ AI Security · team-13
 
+**Demo:** https://aigislabs.dev/
+
 - Martin Rojas Cornejo ([@nachoroas](https://github.com/nachoroas))
 - Nicolás Rodrigo Arancibia Aguirre ([@nicoaranc](https://github.com/nicoaranc))
 - Martin Bahamonde ([@Asterix265](https://github.com/Asterix265))

@@ -172,10 +172,6 @@ class LocalProvider(SandboxProvider):
             "--security-opt", "no-new-privileges", "--pids-limit", "512",
             "--cpus", str(spec.cpus), "--memory", f"{spec.memory_mb}m",
         ]
-        if spec.nested_sandbox:
-            # bubblewrap crea user, mount y net namespaces: el seccomp y AppArmor por defecto de
-            # Docker lo impiden. La red de la caja sigue controlada por el proxy.
-            args += ["--security-opt", "seccomp=unconfined", "--security-opt", "apparmor=unconfined"]
         if self.runtime:
             args += ["--runtime", self.runtime]
         if self.resolv:

@@ -64,6 +64,10 @@ def test_roundtrip(pg):
             await st.save_diff(run.id, "gemelo", "bajo", "diff --git a b")
             assert await st.get_diff(run.id, "gemelo", "bajo") == "diff --git a b"
             await st.save_usage(run.id, {"cost_usd": 0.1})
+            assert (await st.get_usage(run.id))["cost_usd"] == 0.1
+            assert await st.get_usage("nada") is None
+            spent, n = await st.total_cost()
+            assert n >= 1 and spent >= 0.1
         finally:
             await st.close()
 

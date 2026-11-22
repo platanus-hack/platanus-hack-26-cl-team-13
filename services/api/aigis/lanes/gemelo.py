@@ -36,7 +36,7 @@ class TwinLow(Defense):
 
     async def on_pre(self, ctx: HookCtx, tool: str, tool_input: dict) -> Decision:
         await handoff.sync_dir(ctx.orch, ctx.rc)
-        if tool in ("WebFetch", "WebSearch"):
+        if tool in ("WebFetch", "WebSearch") and "low_hints" not in ctx.rc.run.ablate:
             files = await ctx.orch.provider.list_dir(ctx.sb, handoff.LOW_DIR)
             listing = ", ".join(files[-10:]) if files else "vacía por ahora"
             return ("deny", f"sin internet en este entorno. El contenido web llega a /handoff/ ({listing}); "

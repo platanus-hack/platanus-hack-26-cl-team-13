@@ -36,4 +36,5 @@ addopts = "-m 'not docker and not e2b'"
 markers = [
     "docker: requiere Docker y la imagen del sandbox",
     "e2b: requiere E2B_API_KEY y la plantilla aigis-sandbox",
+    "tasks_copy: el harness usa una copia temporal de tasks/ (para tests que cambian guiones)",
 ]
