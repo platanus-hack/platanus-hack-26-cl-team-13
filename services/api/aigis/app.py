@@ -185,6 +185,17 @@ def create_app(
                 "cache_creation_input_tokens", "cache_read_input_tokens", "by_lane")
         return {"run_id": run_id, **{k: u[k] for k in keep if k in u}}
 
+    @app.get("/runs/{run_id}/chain", dependencies=[Depends(require_token)])
+    async def run_chain(run_id: str, request: Request):
+        """Cadena del ataque por carril y caja, armada desde los eventos guardados (ver chain.py)."""
+        from .chain import build_chain
+        from .divergence import hosts_of_urls
+
+        run = await get_run_obj(request, run_id)
+        events = await orch(request).store.events(run_id)
+        return build_chain(events, run, ignore_hosts=hosts_of_urls(settings.gateway_url_sandbox,
+                                                                   settings.hook_base_sandbox))
+
     @app.get("/budget", dependencies=[Depends(require_token)])
     async def budget(request: Request):
         return await orch(request).budget()
