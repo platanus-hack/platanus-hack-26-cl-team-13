@@ -30,6 +30,8 @@ Por defecto la API usa el provider Docker local (`AIGIS_SANDBOX_PROVIDER=local`)
 | Conformidad Docker | `make sandbox-image` y `uv run pytest -m docker` |
 | Conformidad E2B | `uv run python -m aigis.providers.e2b_template` y `uv run pytest -m e2b` |
 
+**Plantilla E2B.** Se llama `aigis-sandbox-<hash de sandbox/>`: cualquier cambio en `sandbox/` da un nombre nuevo, así el orquestador nunca usa una imagen de otra versión del código. `python -m aigis.providers.e2b_template` la construye solo si falta (`--force` reconstruye igual). En Render corre como Pre-Deploy Command del orquestador, así que no hay que construirla a mano. `/health` muestra `sandbox_template` y `template_ok`. `E2B_TEMPLATE` fija un nombre a mano y se salta esa garantía: solo para pruebas.
+
 Las variables pueden ir en `.env` (ignorado por git). Todas llevan prefijo `AIGIS_` salvo `DATABASE_URL` y `E2B_API_KEY`; ver `gemelo/config.py`.
 
 ## API

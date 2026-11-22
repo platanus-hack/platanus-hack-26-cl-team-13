@@ -53,6 +53,14 @@ Ver proposal.md (Why). Render no permite contenedores privilegiados ni Docker de
 - Los tests de bloqueo miran la respuesta HTTP: en E2B una conexión bloqueada puede parecer abierta.
 - Mejora posible para D4, no implementada: `network.rules` con `transform.headers` inyecta el token del gateway desde los secretos de E2B y el token nunca entra a la caja. Está en beta y E2B re-firma el TLS con su CA (Claude Code necesitaría `NODE_EXTRA_CA_CERTS`).
 
+**Plantilla E2B versionada por contenido** (22 nov, no está en el memo). Motivo: en Render las cajas salían de una plantilla construida antes del renombre a AIgis y fallaban todos los carriles con `can't open file '/opt/aigis/scripted_agent.py'`. La plantilla se construía a mano y nadie la actualizaba cuando cambiaba `sandbox/`.
+- El nombre es `aigis-sandbox-<12 hex del sha256 de sandbox/>`: rutas y contenidos, sin `__pycache__` ni `.pyc`, con CRLF normalizado a LF para que Windows y Linux den el mismo nombre. Si cambia `sandbox/`, cambia el nombre, y el orquestador nunca pide una imagen de otra versión del código.
+- `python -m aigis.providers.e2b_template` construye solo si ese nombre no existe (`--force` reconstruye igual). En Render corre como Pre-Deploy Command del orquestador: si `sandbox/` no cambió, termina en segundos; si cambió, construye antes de que arranque la versión nueva. Si falla, el deploy se cancela y sigue la versión anterior.
+- Al arrancar, el provider revisa que la plantilla exista (`ensure_infra`) y lo muestra en `/health` (`sandbox_template`, `template_ok`). Si falta, no tumba el arranque, pero `create` falla con un mensaje que dice cómo construirla, en vez de un error de archivo dentro de la caja.
+- `E2B_TEMPLATE` sigue disponible para fijar un nombre a mano, solo para pruebas: se salta la garantía y el arranque lo advierte en el log.
+- Cada cambio de `sandbox/` deja la plantilla anterior en E2B. Se borran a mano desde el dashboard; no se automatizó porque otro ambiente podría seguir usándola.
+- Se corrige la marca de los DNS fijados en `/etc/hosts`: se escribía `# gemelo` y se limpiaba `# aigis`, así que al cambiar de perfil de red quedaban pins viejos.
+
 **Limpieza garantizada.** El orquestador registra cada sandbox por corrida y los destruye en un `finally`; además, cada sandbox nace con una etiqueta de corrida y un timeout máximo (menor que 1 h en E2B) para que un proceso caído no deje sandboxes huérfanos.
 
 **Suite de conformidad parametrizada.** Tests pytest en `services/api/tests/` marcados por proveedor; `make test` corre `local` por defecto, y `SANDBOX_PROVIDER=e2b make test` corre la misma suite contra E2B.

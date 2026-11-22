@@ -79,6 +79,8 @@ class LaneResult(BaseModel):
     verdict: Verdict = "ok"
     blocked_egress: int = 0
     denied_tools: int = 0
+    # Acciones que negó el vigilante de integridad del gemelo bajo (D1)
+    integrity_denials: int = 0
     # Negaciones del propio Claude Code (permission_denials del resultado stream-json)
     native_denials: int = 0
     network_cut: bool = False
@@ -88,6 +90,9 @@ class LaneResult(BaseModel):
     detail: str | None = None
     # Solo gemelo: comparación paso a paso de los dos gemelos (ver divergence.py)
     divergence: dict[str, Any] | None = None
+    # Gemelo: las honeytokens del alto llegaron al atacante y el bajo fue avisado
+    # para proteger sus credenciales (evento twin.alert + aviso en /handoff)
+    credentials_protected: bool = False
 
 
 class Box(BaseModel):

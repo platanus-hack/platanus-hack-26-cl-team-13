@@ -61,6 +61,19 @@ export function describe(ev: GEvent): { cls: string; text: string; detail?: stri
         cls: d.score !== null && d.score >= 7 ? "deny" : "info",
         text: `monitor: ${d.score ?? "sin score"}/10 · ${short(d.reason, 140)}`,
       };
+    case "integrity.taint":
+      return {
+        cls: "info",
+        text: `vigilante: contexto ${d.label === "secret" ? "con secreto" : "no confiable"} · ${short(d.source, 80)}`,
+      };
+    case "integrity.check":
+      return {
+        cls: d.decision === "deny" ? "deny" : "info",
+        text: `vigilante ${d.decision === "deny" ? "NIEGA" : "permite"} ${d.tool} · ${(d.classes || []).join(", ")} · ${
+          d.via
+        }${d.score !== undefined && d.score !== null ? ` ${d.score}/10` : ""}${d.reason ? ` · ${short(d.reason, 120)}` : ""}`,
+        detail: d.reason || undefined,
+      };
     case "net.cut":
       return { cls: "cut", text: `RED CORTADA (${d.profile}) por ${d.cause}` };
     case "net.blocked":
@@ -72,6 +85,14 @@ export function describe(ev: GEvent): { cls: string; text: string; detail?: stri
       };
     case "handoff":
       return { cls: "info", text: `traspaso ${d.kind}: ${d.name} · ${d.bytes} B`, detail: d.source };
+    case "twin.alert":
+      return {
+        cls: "honey",
+        text: `AVISO DEL GEMELO ALTO: honeytoken ${d.env_name} llegó al atacante · ${
+          d.delivered ? "bajo avisado, protege sus credenciales" : "bajo ya terminó"
+        }`,
+        detail: d.message || undefined,
+      };
     case "test.result":
       return { cls: d.passed ? "allow" : "deny", text: `tests ${d.passed ? "pasan" : "fallan"} (exit ${d.exit_code})`, detail: d.summary };
     case "scan.result":

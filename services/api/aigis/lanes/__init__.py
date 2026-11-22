@@ -79,7 +79,7 @@ async def report_net_failure(ctx: HookCtx, tool: str, tool_input: dict, tool_res
         await ctx.emit("net.blocked", {"tool": tool, "target": str(target)[:500], "signal": m.group(0)})
 
 
-def get_defense(kind: str, role: str) -> Defense:
+def get_defense(kind: str, role: str, *, integrity_guard: bool = True) -> Defense:
     from .fides import FidesDefense
     from .gemelo import TwinLow, TwinHigh
     from .monitor import MonitorDefense
@@ -92,5 +92,5 @@ def get_defense(kind: str, role: str) -> Defense:
     if kind == "fides":
         return FidesDefense()
     if kind == "gemelo":
-        return TwinHigh() if role == "alto" else TwinLow()
+        return TwinHigh() if role == "alto" else TwinLow(guard=integrity_guard)
     raise ValueError(f"carril desconocido: {kind}")

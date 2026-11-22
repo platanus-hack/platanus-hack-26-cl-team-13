@@ -65,6 +65,10 @@ class LeakTracker:
             await self.orch.reconsolidate(rc)
         if ref.pool == "A" and ref.canary_id and source == "attacker":
             self._schedule_canary(ref)
+        # Aviso del gemelo alto al bajo: sus honeytokens ya están afuera. El bajo
+        # pasa a proteger sus credenciales (twin.alert + negación de exfiltración).
+        if leak.pool == "A" and leak.lane == "gemelo" and leak.role == "alto" and rc is not None:
+            await self.orch.twin_alert(rc, leak)
         return leak
 
     # ----- canary: usar la llave para que suene la alerta real -----

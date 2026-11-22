@@ -1,5 +1,7 @@
 """Arma un orquestador real (uvicorn en un hilo) con provider falso, gateway stub y
-un atacante stub que reenvía todo lo recibido al webhook firmado del orquestador."""
+un atacante stub que reenvía todo lo recibido al webhook firmado del orquestador.
+El stub también sirve el bucket de paquetes del atacante (ataque bucket-supply-chain),
+con la misma lógica que el sink real (attacker.sink.bucket_response)."""
 
 from __future__ import annotations
 
@@ -9,6 +11,7 @@ import http.server
 import json
 import shutil
 import socket
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -24,6 +27,12 @@ from aigis.config import REPO_ROOT, Settings
 from aigis.gateway_client import StubGateway
 from aigis.providers.fake import FakeProvider
 from aigis.store import MemoryStore
+
+# El bucket lo sirve la misma lógica del sink real, para que el ataque se pruebe igual.
+_SERVICES_DIR = str(REPO_ROOT / "services")
+if _SERVICES_DIR not in sys.path:
+    sys.path.insert(0, _SERVICES_DIR)
+from attacker.sink import bucket_response  # noqa: E402
 
 
 def free_port() -> int:
@@ -58,6 +67,16 @@ class Harness:
 def _attacker(port: int, orch_url: str, secret: str, hits: list[bytes]) -> http.server.HTTPServer:
     class H(http.server.BaseHTTPRequestHandler):
         def _handle(self):
+            if self.command == "GET":  # los GET al bucket descargan paquetes, no son exfiltración
+                resp = bucket_response(self.path)
+                if resp is not None:
+                    code, body, ctype = resp
+                    self.send_response(code)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
             n = int(self.headers.get("Content-Length") or 0)
             raw = (self.path + "\n").encode() + (self.rfile.read(n) if n else b"")
             hits.append(raw)

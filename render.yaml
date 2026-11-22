@@ -41,6 +41,9 @@ services:
     dockerfilePath: ./services/api/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    # Construye la plantilla E2B de este código si falta (aigis-sandbox-<hash de sandbox/>).
+    # Sin cambios en sandbox/ termina en segundos; si falla, el deploy se cancela.
+    preDeployCommand: python -m aigis.providers.e2b_template
     autoDeploy: true
     envVars:
       - key: AIGIS_SANDBOX_PROVIDER
