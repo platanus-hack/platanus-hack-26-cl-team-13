@@ -6,19 +6,31 @@ empareja contra los secretos activos, con sus codificaciones y capas anidadas.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
+from collections import deque
 from typing import TYPE_CHECKING
 
-from . import scanner
+from . import canary, scanner
 from .models import Leak
 
 if TYPE_CHECKING:
     from .runner import Orchestrator
 
 
+log = logging.getLogger("aigis.leaks")
+
+
 class LeakTracker:
     def __init__(self, orch: Orchestrator) -> None:
         self.orch = orch
+        # Tokens de las últimas peticiones al atacante, para reconstruir llaves partidas
+        self._recent: deque[tuple[float, list[str]]] = deque(maxlen=orch.settings.fragment_window_max)
+        self._fragment_done: set[str] = set()
+        self._triggered: set[str] = set()
+        self._tasks: set[asyncio.Task] = set()
+        self.canary_transport = None  # tests: httpx.MockTransport
 
     def _step_at(self, run_id: str, lane: str, role: str, at: float) -> int | None:
         rc = self.orch.contexts.get(run_id)
@@ -51,7 +63,38 @@ class LeakTracker:
         )
         if rc and rc.run.status == "done":
             await self.orch.reconsolidate(rc)
+        if ref.pool == "A" and ref.canary_id and source == "attacker":
+            self._schedule_canary(ref)
         return leak
+
+    # ----- canary: usar la llave para que suene la alerta real -----
+
+    def _schedule_canary(self, ref) -> None:
+        if not self.orch.settings.canary_trigger or ref.canary_id in self._triggered:
+            return
+        self._triggered.add(ref.canary_id)
+        t = asyncio.create_task(self.trigger_canary(ref))
+        self._tasks.add(t)
+        t.add_done_callback(self._tasks.discard)
+
+    async def trigger_canary(self, ref) -> dict:
+        secret = self.orch.registry.canary_secrets.get(ref.canary_id)
+        data = {"canary_id": ref.canary_id, "secret_id": ref.id, "env_name": ref.env_name}
+        if not secret:
+            data["status"] = "no_secret"  # canaries.json sin `secret`: no se puede firmar
+        else:
+            try:
+                data["http_status"] = await canary.use_key(ref.value, secret, self.orch.settings.canary_sts_url,
+                                                           transport=self.canary_transport)
+                data["status"] = "sent"
+            except Exception as e:  # noqa: BLE001
+                data["status"], data["error"] = "error", type(e).__name__
+                log.warning("no se pudo usar la canary %s: %s", ref.canary_id, type(e).__name__)
+        if ref.run_id:
+            rc = self.orch.contexts.get(ref.run_id)
+            await self.orch.bus.emit(ref.run_id, "canary.trigger", data, lane=ref.lane, role=ref.role,
+                                     mode=rc.run.mode if rc else "live")
+        return data
 
     async def scan_payload(self, raw: str, *, channel: str, source: str = "attacker",
                            at: float | None = None) -> list[Leak]:
@@ -67,6 +110,41 @@ class LeakTracker:
                 seen.add(h.secret_id)
                 enc = h.encoding if t is raw else f"nested:{h.encoding}"
                 lk = await self.record_any(h.secret_id, source=source, encoding=enc, channel=channel, at=at)
+                if lk:
+                    out.append(lk)
+        self._fragment_done |= seen
+        out += await self.scan_fragments(texts, channel=channel, source=source, at=at or time.time())
+        return out
+
+    def _live_secrets(self, now_: float) -> list:
+        """Secretos de corridas en curso o que terminaron dentro de la ventana."""
+        s = self.orch.settings
+        out = []
+        for rc in self.orch.contexts.values():
+            ended = rc.run.ended_at.timestamp() if rc.run.ended_at else None
+            if ended is None or now_ - ended <= s.fragment_window_s:
+                out += self.orch.registry.for_run(rc.run.id)
+        return out
+
+    async def scan_fragments(self, texts: list[str], *, channel: str, source: str, at: float) -> list[Leak]:
+        """Llave partida en varias peticiones: se juntan los trozos de las peticiones recientes.
+
+        Solo cuenta si aportan al menos dos peticiones (una sola ya la cubre `scan_payload`) y
+        cubren `fragment_coverage` del valor con trozos de `fragment_min_len` o más.
+        """
+        s = self.orch.settings
+        self._recent.append((at, scanner.tokens_of(texts)))
+        window = [toks for ts, toks in self._recent if at - ts <= s.fragment_window_s]
+        out = []
+        for ref in self._live_secrets(at):
+            if ref.id in self._fragment_done:
+                continue
+            min_len = scanner.fragment_min_len(ref.value, s.fragment_min_len)
+            cov, contrib = scanner.fragment_coverage(ref.value, window, min_len)
+            if cov >= s.fragment_coverage and len(contrib) >= 2:
+                self._fragment_done.add(ref.id)
+                lk = await self.record(ref.run_id, ref.id, source=source, encoding=f"fragments:{len(contrib)}",
+                                       channel=channel, at=at)
                 if lk:
                     out.append(lk)
         return out

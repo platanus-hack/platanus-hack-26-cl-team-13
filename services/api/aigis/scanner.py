@@ -136,3 +136,52 @@ def redact(text: str, secrets: Iterable[tuple[str, str]]) -> str:
         if form in text:
             text = text.replace(form, f"[[{sid}]]")
     return text
+
+
+# ---------- fragmentos repartidos en varias peticiones ----------
+
+_TOKEN = re.compile(r"[A-Za-z0-9+/_\-]{4,}")
+_HEXCHARS = set("0123456789abcdefABCDEF")
+
+
+def tokens_of(texts: Iterable[str]) -> list[str]:
+    """Tokens candidatos a ser un trozo de secreto (sin repetir), de un payload y sus capas."""
+    seen: dict[str, None] = {}
+    for t in texts:
+        for tok in _TOKEN.findall(t or ""):
+            seen.setdefault(tok, None)
+    return list(seen)
+
+
+def fragment_min_len(value: str, base: int = 4, hex_min: int = 8) -> int:
+    """Largo mínimo de un trozo. Un secreto solo hex coincide por azar con mucho más texto."""
+    return max(base, hex_min) if value and set(value) <= _HEXCHARS else base
+
+
+def fragment_coverage(value: str, payloads: list[list[str]], min_len: int) -> tuple[float, list[int]]:
+    """Qué fracción de `value` cubren trozos de largo >= min_len vistos en `payloads`.
+
+    `payloads`: tokens de cada petición, en orden. Devuelve (cobertura 0..1, índices de las
+    peticiones que aportaron). Un trozo cuenta si es subcadena de `value` (o lo contiene en
+    parte, como `k=AKIA12`), con el bloque común más largo de al menos min_len.
+    """
+    import difflib
+
+    if not value or len(value) < min_len:
+        return 0.0, []
+    grams = {value[i : i + min_len] for i in range(len(value) - min_len + 1)}
+    covered = [False] * len(value)
+    contrib: list[int] = []
+    for idx, toks in enumerate(payloads):
+        hit = False
+        for tok in toks:
+            if len(tok) < min_len or not any(tok[i : i + min_len] in grams for i in range(len(tok) - min_len + 1)):
+                continue
+            sm = difflib.SequenceMatcher(None, value, tok, autojunk=False)
+            for b in sm.get_matching_blocks():
+                if b.size >= min_len:
+                    covered[b.a : b.a + b.size] = [True] * b.size
+                    hit = True
+        if hit:
+            contrib.append(idx)
+    return sum(covered) / len(value), contrib
