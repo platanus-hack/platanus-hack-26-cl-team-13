@@ -223,7 +223,7 @@ export function PanelHome() {
           <h2 id="new-run" className="text-xl font-semibold">
             Corrida nueva
           </h2>
-          <LaunchForm />
+          <LaunchForm ablations />
         </section>
         <section aria-labelledby="queue-title" className="flex flex-col gap-3 rounded-xl border bg-card p-4">
           <h2 id="queue-title" className="text-xl font-semibold">
