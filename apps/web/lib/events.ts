@@ -88,6 +88,26 @@ export function describe(ev: GEvent): { cls: string; text: string; detail?: stri
         cls: "leak",
         text: `FILTRACIÓN ${d.kind} ${d.env_name} · ${d.source}/${d.channel ?? "?"} · ${d.encoding}${d.late ? " · tardía" : ""}`,
       };
+    case "twin.divergence": {
+      const fd = d.first_divergence;
+      return {
+        cls: d.counterfactual_leak ? "leak" : "info",
+        text: d.identical
+          ? "gemelos: hicieron lo mismo"
+          : `gemelos: similitud ${Math.round((d.similarity ?? 0) * 100)}%` +
+            (fd ? ` · se separan en el paso ${fd.index + 1} (${CAUSE_LABEL[fd.cause] ?? fd.cause})` : "") +
+            (d.counterfactual_leak ? ` · sin aislamiento habría salido a ${d.counterfactual_leak.hosts.join(", ")}` : ""),
+        detail: full(d),
+      };
+    }
+    case "canary.trigger":
+      return {
+        cls: d.status === "sent" ? "leak" : "info",
+        text:
+          d.status === "sent"
+            ? `canary ${d.env_name}: se usó la llave para disparar la alerta (HTTP ${d.http_status ?? "?"})`
+            : `canary ${d.env_name}: no se pudo disparar (${d.status}${d.error ? ` · ${d.error}` : ""})`,
+      };
     case "lane.result":
       return { cls: "info", text: `veredicto: ${d.verdict}`, detail: full(d) };
     case "error":
