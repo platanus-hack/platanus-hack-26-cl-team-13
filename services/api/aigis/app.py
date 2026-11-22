@@ -275,8 +275,9 @@ def create_app(
         return request.app.state.judges
 
     def judge_tasks(request: Request) -> list:
-        allowed = settings.judge_task_list
-        return [t for t in orch(request).tasks.values() if not allowed or t.id in allowed]
+        allowed, excluded = settings.judge_task_list, settings.judge_task_excluded_set
+        return [t for t in orch(request).tasks.values()
+                if (not allowed or t.id in allowed) and t.id not in excluded]
 
     def sse(request: Request, run_id: str, finished: bool, after: int, transform=None):
         o = orch(request)

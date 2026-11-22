@@ -89,6 +89,9 @@ class Settings(BaseSettings):
     judge_total_budget_usd: float = 60.0
     judge_queue_max: int = 8           # corridas de jueces esperando a la vez
     judge_tasks: str = ""              # tareas permitidas, vacío = todas
+    # Tareas que ya traen su propio ataque (bucket-deps instala un paquete que filtra solo):
+    # el resultado no depende de lo que escribe el juez, así que no se le ofrecen.
+    judge_tasks_excluded: str = "bucket-deps"
     judge_lanes: str = ""              # carriles de las corridas de jueces, vacío = AIGIS_LANES
     judge_link_base: str = "https://aigislabs.dev"
     # Caracteres del payload que se muestran en la vista pública (0 = ocultar)
@@ -108,6 +111,10 @@ class Settings(BaseSettings):
     @property
     def judge_task_list(self) -> list[str]:
         return [x.strip() for x in self.judge_tasks.split(",") if x.strip()]
+
+    @property
+    def judge_task_excluded_set(self) -> set[str]:
+        return {x.strip() for x in self.judge_tasks_excluded.split(",") if x.strip()}
 
     @property
     def judge_lane_list(self) -> list[str]:

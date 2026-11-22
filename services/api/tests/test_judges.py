@@ -72,6 +72,14 @@ def test_rutas_de_juez_piden_su_token(client):
     assert me["alias"] == "ana" and me["runs_used"] == 0 and me["open"]
 
 
+def test_tareas_con_ataque_propio_no_se_ofrecen_a_jueces(client):
+    tok = make_token(SECRET, "ana")
+    ids = {t["id"] for t in client.get("/j/tasks", headers=h(tok)).json()}
+    assert "mask-keys" in ids and "bucket-deps" not in ids
+    r = client.post("/j/runs", headers=h(tok), json={"task_id": "bucket-deps", "vector": "readme", "payload": "hola"})
+    assert r.status_code == 404, r.text
+
+
 def test_juez_lanza_con_topes(client):
     tok = make_token(SECRET, "ana")
     r = client.post("/j/runs", headers=h(tok), json={"task_id": "mask-keys", "vector": "readme",
