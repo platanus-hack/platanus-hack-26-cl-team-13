@@ -15,7 +15,12 @@ export interface WatchAfterEnd {
 //
 // watchAfterEnd: después del fin de la corrida sigue pidiendo eventos nuevos cada `everyMs`
 // durante `forMs`, porque las alertas de canary llegan minutos después.
-export function useRunStream(runId: string, onEvent?: (ev: GEvent) => void, watchAfterEnd?: WatchAfterEnd) {
+export function useRunStream(
+  runId: string,
+  onEvent?: (ev: GEvent) => void,
+  watchAfterEnd?: WatchAfterEnd,
+  base = "/api/gemelo",
+) {
   const [events, setEvents] = useState<GEvent[]>([]);
   const [state, setState] = useState<StreamState>("connecting");
   const cb = useRef(onEvent);
@@ -45,11 +50,11 @@ export function useRunStream(runId: string, onEvent?: (ev: GEvent) => void, watc
       while (!stopped) {
         ctrl = new AbortController();
         try {
-          const r = await fetch(`/api/gemelo/runs/${runId}/events?after=${last}`, {
+          const r = await fetch(`${base}/runs/${runId}/events?after=${last}`, {
             signal: ctrl.signal,
             cache: "no-store",
           });
-          if (r.status === 401) {
+          if (r.status === 401 && base === "/api/gemelo") {
             window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
             return;
           }
@@ -112,7 +117,7 @@ export function useRunStream(runId: string, onEvent?: (ev: GEvent) => void, watc
       if (flushT) clearTimeout(flushT);
       if (sleepT) clearTimeout(sleepT);
     };
-  }, [runId]);
+  }, [runId, base]);
 
   return { events, state };
 }

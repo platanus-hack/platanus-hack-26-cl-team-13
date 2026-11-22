@@ -76,12 +76,40 @@ class Settings(BaseSettings):
     api_token: str = ""
     # Etiqueta de ambiente en las cajas remotas: un ambiente nunca limpia las cajas de otro
     env_name: str = "dev"
+    # --- Jueces (aigis/judges.py) -------------------------------------------------
+    # Secreto con que se firman los tokens de jueces. Vacío = acceso de jueces apagado.
+    judge_secret: str = ""
+    judges_enabled: bool = True
+    judge_revoked: str = ""            # alias separados por coma
+    judge_max_runs: int = 4            # corridas por juez
+    judge_min_interval_s: int = 120    # entre envíos del mismo juez
+    judge_total_runs: int = 40         # cupo del evento
+    judge_total_budget_usd: float = 60.0
+    judge_queue_max: int = 8           # corridas de jueces esperando a la vez
+    judge_tasks: str = ""              # tareas permitidas, vacío = todas
+    judge_lanes: str = ""              # carriles de las corridas de jueces, vacío = AIGIS_LANES
+    judge_link_base: str = "https://aigislabs.dev"
+    # Caracteres del payload que se muestran en la vista pública (0 = ocultar)
+    public_payload_preview: int = 600
+
     # Orígenes permitidos por CORS, separados por coma ("*" en desarrollo)
     cors_origins: str = "*"
 
     tasks_dir: Path = REPO_ROOT / "tasks"
     sandbox_dir: Path = REPO_ROOT / "sandbox"
     dev: bool = True
+
+    @property
+    def judge_revoked_list(self) -> set[str]:
+        return {x.strip().lower() for x in self.judge_revoked.split(",") if x.strip()}
+
+    @property
+    def judge_task_list(self) -> list[str]:
+        return [x.strip() for x in self.judge_tasks.split(",") if x.strip()]
+
+    @property
+    def judge_lane_list(self) -> list[str]:
+        return [x.strip() for x in self.judge_lanes.split(",") if x.strip()] or self.lane_list
 
     @property
     def lane_list(self) -> list[str]:

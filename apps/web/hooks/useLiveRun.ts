@@ -22,8 +22,16 @@ const REFRESH_ON = new Set([
 // Después del fin, 10 minutos esperando alertas de canary tardías
 const WATCH = { everyMs: 20_000, forMs: 10 * 60_000 };
 
+async function getPublic<T>(path: string): Promise<T> {
+  const r = await fetch(`/api/public${path}`, { cache: "no-store" });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ApiError(r.status, body.detail ?? `HTTP ${r.status}`);
+  return body as T;
+}
+
 // Corrida en vivo: SSE + relecturas del run + diffs por carril, todo por el proxy con sesión.
-export function useLiveRun(id: string) {
+// Con publicView usa /api/public: sin sesión, sin diffs ni cancelar.
+export function useLiveRun(id: string, publicView = false) {
   const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Diffs>({});
@@ -33,12 +41,12 @@ export function useLiveRun(id: string) {
 
   const load = useCallback(async () => {
     try {
-      setRun(await api<Run>(`/runs/${id}`));
+      setRun(publicView ? await getPublic<Run>(`/runs/${id}`) : await api<Run>(`/runs/${id}`));
       setError(null);
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [id]);
+  }, [id, publicView]);
 
   // Relee como mucho cada 700 ms mientras llegan eventos
   const onEvent = useCallback(
@@ -52,7 +60,7 @@ export function useLiveRun(id: string) {
     [load],
   );
 
-  const { events, state } = useRunStream(id, onEvent, WATCH);
+  const { events, state } = useRunStream(id, onEvent, WATCH, publicView ? "/api/public" : "/api/gemelo");
 
   useEffect(() => {
     load();
@@ -68,6 +76,10 @@ export function useLiveRun(id: string) {
     for (const [lane, l] of Object.entries(run.lanes)) {
       if (!l.result || asked.current.has(lane)) continue;
       asked.current.add(lane);
+      if (publicView) {
+        setDiffs((d) => ({ ...d, [lane]: { error: "El diff no se publica en la vista pública" } }));
+        continue;
+      }
       api<string>(`/runs/${id}/lanes/${lane}/diff`)
         .then((text) => setDiffs((d) => ({ ...d, [lane]: { text } })))
         .catch((e: ApiError) =>
@@ -77,7 +89,7 @@ export function useLiveRun(id: string) {
           })),
         );
     }
-  }, [run, id]);
+  }, [run, id, publicView]);
 
   // La cadena se pide al terminar y otra vez si llega una filtración tardía (canary)
   const finished = run ? FINISHED.includes(run.status) : false;
