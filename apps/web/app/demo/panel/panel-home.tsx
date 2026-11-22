@@ -70,7 +70,7 @@ function BudgetCard() {
           {b.live_enabled ? "En vivo habilitado" : "En vivo pausado: la web muestra las grabaciones"}
         </span>
       </div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 tabular-nums">
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 tabular-nums [&_dd]:[overflow-wrap:anywhere]">
         <dt className="text-muted-foreground">Gastado</dt>
         <dd>{usd(b.spent_usd)}</dd>
         <dt className="text-muted-foreground">Comprometido</dt>
