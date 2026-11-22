@@ -52,6 +52,11 @@ sink.py        FastAPI en :9000. Recibe en CUALQUIER ruta y método (el ataque n
                poder fallar por URL), extrae query+headers+body+path, persiste el hito
                crudo (JSONL en disco, con timestamp, run_id/lane si vienen en headers
                X-Aigis-Lane, source IP) y responde 200 siempre.
+bucket/        Bucket de dependencias internas (pre-condición del ataque
+               bucket-supply-chain): GET /bucket/<pkg>.json (metadata) y
+               GET /bucket/<pkg>/<archivo>. Esos GET no se reportan como exfiltración
+               (descargar un paquete no filtra); el resto de rutas y métodos sí.
+               aigis-string-utils trae un postinstall que manda el .env al sink.
 decoders.py    Biblioteca de decodificadores + pipeline recursivo:
                - claro, base64 std/url (3 alineaciones, con/sin padding), hex, url-encode,
                  fragmentos ≥8 → portar desde aigis/scanner.py (mismo código, mismas garantías)

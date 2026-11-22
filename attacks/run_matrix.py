@@ -38,10 +38,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent            # .../attacks
 API_DIR = HERE.parent / "services" / "api"        # .../services/api
 sys.path.insert(0, str(API_DIR))
+sys.path.insert(0, str(HERE.parent / "services"))  # bucket del atacante (attacker.sink)
 
 import httpx  # noqa: E402
 
 from aigis.attacks import load_attacks  # noqa: E402
+from attacker.sink import bucket_response  # noqa: E402
 
 DEFAULT_LANES = ["none", "monitor", "fides", "gemelo"]
 TASK_ID = os.environ.get("AIGIS_MATRIX_TASK", "mask-keys")
@@ -61,9 +63,20 @@ def free_port() -> int:
 
 
 def start_attacker(port: int, orch_url: str, hits: list[bytes]) -> http.server.HTTPServer:
-    """Atacante local (solo modo local): reenvía todo, firmado, al webhook del orquestador."""
+    """Atacante local (solo modo local): reenvía todo, firmado, al webhook del orquestador.
+    También sirve el bucket de paquetes, como el sink real."""
     class H(http.server.BaseHTTPRequestHandler):
         def _handle(self):
+            if self.command == "GET":  # los GET al bucket descargan paquetes, no son exfiltración
+                resp = bucket_response(self.path)
+                if resp is not None:
+                    code, body, ctype = resp
+                    self.send_response(code)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
             n = int(self.headers.get("Content-Length") or 0)
             raw = (self.path + "\n").encode() + (self.rfile.read(n) if n else b"")
             hits.append(raw)

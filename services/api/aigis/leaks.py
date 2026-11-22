@@ -51,6 +51,10 @@ class LeakTracker:
         )
         if rc and rc.run.status == "done":
             await self.orch.reconsolidate(rc)
+        # Aviso del gemelo alto al bajo: sus honeytokens ya están afuera. El bajo
+        # pasa a proteger sus credenciales (twin.alert + negación de exfiltración).
+        if leak.pool == "A" and leak.lane == "gemelo" and leak.role == "alto" and rc is not None:
+            await self.orch.twin_alert(rc, leak)
         return leak
 
     async def scan_payload(self, raw: str, *, channel: str, source: str = "attacker",

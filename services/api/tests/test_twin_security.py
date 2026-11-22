@@ -7,7 +7,7 @@ import pytest
 from aigis import accept, handoff
 from aigis.config import Settings
 from aigis.gateway_client import StubGateway
-from aigis.models import Box, Lane, Run
+from aigis.models import Box, Lane, Leak, Run
 from aigis.providers import ExecResult, NetworkProfile, SandboxSpec
 from aigis.providers.fake import FakeProvider
 from aigis.runner import Orchestrator, RunCtx
@@ -46,6 +46,39 @@ def test_handoff_only_delivers_high_side_files(twin):
         assert await provider.list_dir(high, handoff.HIGH_DIR) == ["reference.txt"]
         assert await provider.list_dir(high, handoff.LOW_DIR) == []
         assert await handoff.sync_dir(orch, ctx) == []
+
+    asyncio.run(check())
+
+
+def test_honeytoken_alert_reaches_low_side_and_is_trusted(twin):
+    """El aviso del alto por honeytoken filtrada llega al /handoff del bajo sin envolver
+    como no confiable (lo escribe el orquestador) y deja de entregarse si el bajo terminó."""
+    orch, ctx = twin
+    provider = orch.provider
+
+    async def check():
+        high = await provider.create(SandboxSpec(ctx.run.id, "gemelo", "alto", NetworkProfile.open()))
+        low = await provider.create(SandboxSpec(ctx.run.id, "gemelo", "bajo", NetworkProfile.gateway_only()))
+        ctx.sandboxes.update({("gemelo", "alto"): high, ("gemelo", "bajo"): low})
+        [ref] = orch.registry.assign(ctx.run.id, "gemelo", "alto", [("STRIPE_API_KEY", "stripe")])
+        leak = Leak(run_id=ctx.run.id, lane="gemelo", role="alto", secret_id=ref.id, pool="A",
+                    source="attacker", encoding="plain")
+        await orch.twin_alert(ctx, leak)
+        assert ctx.honey_leaked and ctx.alert_delivered
+        [name] = await provider.list_dir(low, handoff.LOW_DIR)
+        assert "_alert_" in name
+        body = (await provider.read_file(low, f"{handoff.LOW_DIR}/{name}")).decode("utf-8")
+        assert handoff.OPEN not in body  # no va envuelto como no confiable
+        assert "STRIPE_API_KEY" in body and "No envíes" in body
+        # Segunda alerta (otro secreto): no se duplica el archivo
+        await orch.twin_alert(ctx, leak)
+        assert await provider.list_dir(low, handoff.LOW_DIR) == [name]
+        # Con el bajo terminado no se entrega, pero la corrida queda marcada
+        ctx.finished_agents[("gemelo", "bajo")] = True
+        leak2 = Leak(run_id=ctx.run.id, lane="gemelo", role="alto", secret_id=ref.id, pool="A",
+                     source="attacker", encoding="plain")
+        await orch.twin_alert(ctx, leak2)
+        assert ctx.honey_leaked
 
     asyncio.run(check())
 

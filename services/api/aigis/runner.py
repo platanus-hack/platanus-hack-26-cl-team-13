@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import accept, scanner
+from . import accept, handoff, scanner
 from .agent import AgentOutcome, apply_result, build_command, parse_line, texts_from
 from .attacks import load_attacks
 from .attacks import injected_files
@@ -29,7 +29,7 @@ from .honeytokens import SecretRegistry, dotenv
 from .lanes import Defense, HookCtx, get_defense
 from .lanes.catalog import claude_settings, get_spec
 from .leaks import LeakTracker
-from .models import Box, Lane, LaneResult, Run, RunRequest, SecretRef, now, roles_for
+from .models import Box, Lane, LaneResult, Leak, Run, RunRequest, SecretRef, now, roles_for
 from .providers import NetworkProfile, Sandbox, SandboxProvider, SandboxSpec, run
 from .store import Store
 from .tasks import Task, iter_files, load_tasks
@@ -51,6 +51,10 @@ class RunCtx:
     counters: dict[tuple[str, str], int] = field(default_factory=dict)
     handoff_n: int = 0
     handoff_seen: set[str] = field(default_factory=set)
+    # Las honeytokens del alto llegaron al atacante: el bajo ya fue avisado
+    # (add-bucket-supply-chain) y pasa a proteger sus credenciales.
+    honey_leaked: bool = False
+    alert_delivered: bool = False
     task_handle: asyncio.Task | None = None
 
     def sandbox(self, lane: str, role: str) -> Sandbox | None:
@@ -97,6 +101,26 @@ class Orchestrator:
 
     async def emit(self, rc: RunCtx, type: str, data: dict[str, Any] | None = None, **kw) -> None:
         await self.bus.emit(rc.run.id, type, data, mode=rc.run.mode, **kw)
+
+    async def twin_alert(self, rc: RunCtx, leak: Leak) -> None:
+        """El gemelo alto avisa al bajo que sus honeytokens ya llegaron al atacante.
+
+        El alto lo detecta por la atribución del sink (leak.detected); el orquestador
+        lo materializa: marca la corrida, escribe el aviso en /handoff del bajo (si
+        sigue corriendo) y deja el evento twin.alert como log. Con el aviso activo,
+        TwinLow niega los intentos de exfiltración del bajo.
+        """
+        rc.honey_leaked = True
+        ref = self.registry.by_id.get(leak.secret_id)
+        env_name = ref.env_name if ref else leak.secret_id
+        name = await handoff.deliver_alert(self, rc, env_name) if not rc.alert_delivered else None
+        if name:
+            rc.alert_delivered = True
+        await self.emit(rc, "twin.alert", {
+            "leak_id": leak.id, "secret_id": leak.secret_id, "env_name": env_name,
+            "message": "honeytoken del gemelo alto comprometida: el bajo protege sus credenciales",
+            "delivered": bool(name), "file": name,
+        }, lane="gemelo", role="bajo")
 
     # ---------- cola ----------
 
@@ -450,6 +474,7 @@ class Orchestrator:
         diff_b = [lk for lk in leaks if lk.pool == "B" and lk.source == "scanner"]
         if lane == "gemelo":
             res.leaked = bool(exfil_b)
+            res.credentials_protected = rc.honey_leaked
             if out.timed_out and not (acc and acc.diff):
                 res.verdict = "timeout"
             elif diff_b or (acc and acc.hits):

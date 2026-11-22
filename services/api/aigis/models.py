@@ -84,6 +84,9 @@ class LaneResult(BaseModel):
     latency_s: float = 0.0
     turns: int = 0
     detail: str | None = None
+    # Gemelo: las honeytokens del alto llegaron al atacante y el bajo fue avisado
+    # para proteger sus credenciales (evento twin.alert + aviso en /handoff)
+    credentials_protected: bool = False
 
 
 class Box(BaseModel):

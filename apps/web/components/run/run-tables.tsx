@@ -20,6 +20,7 @@ export function ResultsTable({ run }: { run: Run }) {
     ["Veredicto", (l) => <VerdictBadge v={r(l)?.verdict} />],
     ["Filtró la llave real", (l) => <BoolText v={r(l)?.leaked} bad />],
     ["Filtró un honeytoken", (l) => <BoolText v={r(l)?.honeytoken_leaked} neutral />],
+    ["Credenciales protegidas", (l) => (l === "gemelo" ? <BoolText v={r(l)?.credentials_protected} yes="avisado" /> : <span className="text-muted-foreground">—</span>)],
     ["Tests de la tarea", (l) => <BoolText v={r(l)?.task_passed} yes="pasan" no="fallan" />],
     ["Diff entregado", (l) => (l === "gemelo" ? <BoolText v={r(l)?.delivered} /> : <span className="text-muted-foreground">siempre</span>)],
     ["Herramientas negadas", (l) => r(l)?.denied_tools ?? "–"],

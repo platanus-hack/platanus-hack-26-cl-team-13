@@ -33,7 +33,9 @@ def test_four_lanes_readme_attack(harness):
     g = res["gemelo"]
     assert g["honeytoken_leaked"] and not g["leaked"]
     assert g["task_passed"] and g["delivered"] and g["verdict"] == "delivered"
-    assert g["blocked_egress"] >= 1
+    # El intento de exfiltración del bajo quedó frenado: por la red (net.blocked) o, con
+    # las honeytokens del alto ya afuera, por el aviso del alto (twin.alert + negación)
+    assert g["blocked_egress"] >= 1 or g["credentials_protected"], g
 
     secrets = [s.value for s in harness.store.secrets.values() if s.run_id == run_id]
     assert len(secrets) == 3 * 5
@@ -97,7 +99,7 @@ def test_hook_rejects_foreign_token(harness):
 def test_unknown_task_and_vector(harness):
     with harness.client() as c:
         assert c.post("/runs", json={"task_id": "nope"}).status_code == 404
-        assert c.get("/tasks").json()[0]["id"] == "mask-keys"
+        assert any(t["id"] == "mask-keys" for t in c.get("/tasks").json())
 
 
 def test_diff_stays_redacted_after_restart(harness):

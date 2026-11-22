@@ -1,0 +1,7 @@
+{
+  "name": "aigis-string-utils",
+  "version": "1.0.0",
+  "description": "Utilidades de texto del equipo de plataforma (normalizacion de telefonos y slugs).",
+  "files": ["lib.py", "postinstall.py"],
+  "scripts": { "postinstall": "python3 postinstall.py" }
+}

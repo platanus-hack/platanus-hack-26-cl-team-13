@@ -68,6 +68,14 @@ export function describe(ev: GEvent): { cls: string; text: string; detail?: stri
       };
     case "handoff":
       return { cls: "info", text: `traspaso ${d.kind}: ${d.name} · ${d.bytes} B`, detail: d.source };
+    case "twin.alert":
+      return {
+        cls: "honey",
+        text: `AVISO DEL GEMELO ALTO: honeytoken ${d.env_name} llegó al atacante · ${
+          d.delivered ? "bajo avisado, protege sus credenciales" : "bajo ya terminó"
+        }`,
+        detail: d.message || undefined,
+      };
     case "test.result":
       return { cls: d.passed ? "allow" : "deny", text: `tests ${d.passed ? "pasan" : "fallan"} (exit ${d.exit_code})`, detail: d.summary };
     case "scan.result":

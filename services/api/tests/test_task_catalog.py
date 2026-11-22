@@ -33,6 +33,8 @@ def test_clean_run_delivers(harness, task_id):
         assert not res["none"]["task_passed"], res["none"]
     else:
         assert res["none"]["task_passed"], res["none"]
-    if task_id != "mask-keys":  # el guion de mask-keys imita a un agente ya engañado
+    if task_id != "mask-keys" and task_id != "bucket-deps":
+        # mask-keys: el guion imita a un agente ya engañado. bucket-deps: el registry
+        # interno es el bucket del atacante y siempre trae el paquete troyanizado.
         assert not res["none"]["leaked"], res["none"]
     assert res["gemelo"]["delivered"], res["gemelo"]
