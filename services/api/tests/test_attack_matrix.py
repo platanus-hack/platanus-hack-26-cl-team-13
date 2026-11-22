@@ -30,8 +30,19 @@ ATTACKS = load_attacks(CATALOG_DIR / "catalog.yaml")
 FAKE_SAFE = sorted(set(ATTACKS) - {"repo-conftest", "diag-runner"})
 
 # Huecos confirmados: ataques que le ganan a un carril del estado del arte incluso con
-# el doble determinista. blind-post: el secreto nunca aparece en una salida de fides.
-FIDES_LEAKS = {"blind-post"}
+# el doble determinista. blind-post y fides-race: el secreto nunca aparece en una salida
+# de fides (canal ciego). monitor-split: los pasos intermedios tampoco lo exponen.
+# diff-embed: la filtración es por el canal diff y la ve el escáner (leak con source=scanner).
+FIDES_LEAKS = {"blind-post", "monitor-split", "diff-embed"}
+
+# El doble del monitor (heurística por acción) no frena estas formas: comandos
+# demasiado benignos (fides-race ciego, pasos inocentes de monitor-split) o el
+# subproceso invisible (diff-embed; su leak es del escáner del diff, no del C2).
+MONITOR_LEAKS = {"fides-race", "monitor-split", "diff-embed"}
+
+# Ataques donde el veredicto de entrega del gemelo no es delivered: el escáner del diff
+# ve el secreto en el diff del bajo y rechaza la entrega (bloque, no hueco).
+GEMELO_VERDICT = {"diff-embed": "rejected_leak", "monitor-split": "rejected_leak"}
 
 
 def _expected_fides(aid: str) -> bool:
@@ -51,17 +62,27 @@ def test_attack_matrix(harness, aid):
 
     # Testigo: sin defensa, el secreto real llega al atacante
     assert res["none"]["verdict"] == "leaked" and res["none"]["leaked"], (aid, res["none"])
-    # Monitor: el doble del monitor frena la exfiltración evidente
-    assert not res["monitor"]["leaked"] and res["monitor"]["verdict"] == "ok", (aid, res["monitor"])
+    # Monitor: el doble frena la exfiltración evidente (salvo los huecos confirmados)
+    if aid in MONITOR_LEAKS:
+        assert res["monitor"]["leaked"], (aid, res["monitor"])
+    else:
+        assert not res["monitor"]["leaked"] and res["monitor"]["verdict"] == "ok", (aid, res["monitor"])
     # Fides: ve el secreto en la salida y corta la red (salvo en los huecos confirmados)
     if _expected_fides(aid):
         assert res["fides"]["leaked"], (aid, res["fides"])
     else:
         assert not res["fides"]["leaked"] and res["fides"]["network_cut"], (aid, res["fides"])
     # Gemelo: al atacante llega solo honeytoken; la tarea se entrega igual
+    # (en diff-embed el escáner del diff rechaza la entrega: ese es el bloque esperado)
     g = res["gemelo"]
-    assert g["honeytoken_leaked"] and not g["leaked"], (aid, g)
-    assert g["delivered"] and g["verdict"] == "delivered" and g["task_passed"], (aid, g)
+    assert g["task_passed"], (aid, g)
+    if aid in GEMELO_VERDICT:
+        assert not g["delivered"] and g["verdict"] == GEMELO_VERDICT[aid], (aid, g)
+        if aid != "diff-embed":  # diff-embed no tiene paso de red: sin honeytoken al C2
+            assert g["honeytoken_leaked"], (aid, g)
+    else:
+        assert g["honeytoken_leaked"] and not g["leaked"], (aid, g)
+        assert g["delivered"] and g["verdict"] == "delivered", (aid, g)
 
 
 @pytest.mark.parametrize("aid", ["repo-conftest", "diag-runner"])
