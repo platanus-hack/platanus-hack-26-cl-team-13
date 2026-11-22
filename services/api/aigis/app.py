@@ -15,14 +15,24 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
 from .config import Settings, get_settings
 from .gateway_client import GatewayClient, HttpGateway, StubGateway
 from .lanes.catalog import CATALOG
-from .models import RunRequest
+from .judges import JUDGE_PREFIX, JudgeDesk, Scrubber, check_token, clean_payload, public_event, public_run
+from .models import Attack, AttackVector, RunRequest
 from .providers import SandboxProvider, get_provider
 from .runner import Orchestrator
 from .store import MemoryStore, Store
+
+
+class JudgeRunRequest(BaseModel):
+    task_id: str
+    vector: AttackVector | None = None
+    payload: str | None = Field(default=None, max_length=8192)
+    # Ataque del catálogo como alternativa a escribir uno
+    attack_id: str | None = None
 
 
 def create_app(
@@ -58,6 +68,7 @@ def create_app(
             print(f"aviso: no se pudieron limpiar cajas huérfanas: {type(e).__name__}: {e}", flush=True)
         orch.start()
         app.state.orch = orch
+        app.state.judges = JudgeDesk(settings)
         yield
         await orch.stop()
         close = getattr(orch.store, "close", None)
@@ -172,6 +183,128 @@ def create_app(
     @app.get("/queue", dependencies=[Depends(require_token)])
     async def queue(request: Request):
         return orch(request).queue()
+
+    # ----- jueces: token corto por juez (aigis/judges.py) -----
+
+    scrub = Scrubber(settings)
+    HISTORY = 500
+
+    def require_judge(authorization: str = Header(default="")) -> str:
+        alias = check_token(settings, authorization.removeprefix("Bearer ").strip())
+        if alias is None:
+            raise HTTPException(401, "token de juez inválido")
+        return alias
+
+    def desk(request: Request) -> JudgeDesk:
+        return request.app.state.judges
+
+    def judge_tasks(request: Request) -> list:
+        allowed = settings.judge_task_list
+        return [t for t in orch(request).tasks.values() if not allowed or t.id in allowed]
+
+    def sse(request: Request, run_id: str, finished: bool, after: int, transform=None):
+        o = orch(request)
+
+        async def gen():
+            yield "retry: 2000\n\n"
+            async for ev in o.bus.subscribe(run_id, after, follow=not finished):
+                if await request.is_disconnected():
+                    break
+                if transform is None:
+                    yield f"id: {ev.seq}\nevent: {ev.type}\ndata: {ev.model_dump_json()}\n\n"
+                    continue
+                pub = transform(ev)
+                if pub is not None:
+                    yield f"id: {ev.seq}\nevent: {ev.type}\ndata: {json.dumps(pub, ensure_ascii=False)}\n\n"
+            yield "event: end\ndata: {}\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.get("/j/me")
+    async def judge_me(request: Request, alias: str = Depends(require_judge)):
+        return desk(request).status(alias, await orch(request).store.list_runs(HISTORY))
+
+    @app.get("/j/tasks", dependencies=[Depends(require_judge)])
+    async def judge_task_list(request: Request):
+        return [t.public() for t in judge_tasks(request)]
+
+    @app.get("/j/attacks", dependencies=[Depends(require_judge)])
+    async def judge_attacks(request: Request):
+        """Catálogo con el payload completo, para partir de un ataque y editarlo."""
+        return [a.model_dump(include={"id", "title", "technique", "channel", "vectors", "payload"})
+                for a in orch(request).attacks.values()]
+
+    @app.post("/j/runs", status_code=201)
+    async def judge_run(req: JudgeRunRequest, request: Request, alias: str = Depends(require_judge)):
+        o, d = orch(request), desk(request)
+        if req.task_id not in {t.id for t in judge_tasks(request)}:
+            raise HTTPException(404, f"tarea no disponible: {req.task_id}")
+        author = f"{JUDGE_PREFIX}{alias}"
+        if req.attack_id:
+            if req.payload:
+                raise HTTPException(422, "usa payload o attack_id, no ambos")
+            cat = o.attacks.get(req.attack_id)
+            if cat is None:
+                raise HTTPException(404, f"ataque desconocido: {req.attack_id}")
+            task = o.tasks[req.task_id]
+            vec = req.vector if req.vector in cat.vectors else next((v for v in cat.vectors if v in task.vectors), None)
+            if vec is None:
+                raise HTTPException(422, f"el ataque {cat.id} no comparte vector con la tarea {task.id}")
+            attack = cat.to_attack(vec).model_copy(update={"author": author})
+        else:
+            payload = clean_payload(req.payload or "").strip()
+            if not payload or req.vector is None:
+                raise HTTPException(422, "falta vector y payload, o attack_id")
+            attack = Attack(vector=req.vector, payload=payload, author=author)
+        try:
+            d.check(alias, await o.store.list_runs(HISTORY))
+        except ValueError as e:
+            raise HTTPException(429, str(e)) from e
+        d.mark(alias)
+        try:
+            r = await o.submit(RunRequest(task_id=req.task_id, attack=attack, lanes=settings.judge_lane_list))
+        except KeyError as e:
+            raise HTTPException(404, str(e)) from e
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        return {"run_id": r.id, "queue_position": r.queue_position}
+
+    @app.get("/j/runs")
+    async def judge_runs(request: Request, alias: str = Depends(require_judge)):
+        runs = await orch(request).store.list_runs(HISTORY)
+        mine = [r for r in runs if r.attack and r.attack.author == f"{JUDGE_PREFIX}{alias}"]
+        return [public_run(r, scrub, preview=8192) for r in mine]
+
+    @app.post("/admin/judges/pause", dependencies=[Depends(require_token)])
+    async def judges_pause(request: Request, paused: bool = True):
+        desk(request).paused = paused
+        return {"paused": paused}
+
+    # ----- vista pública: sin token, recortada por lista blanca -----
+
+    @app.get("/public/runs")
+    async def public_runs(request: Request, limit: int = 30):
+        runs = await orch(request).store.list_runs(max(1, min(limit, 100)))
+        return [public_run(r, scrub, settings.public_payload_preview) for r in runs]
+
+    @app.get("/public/runs/{run_id}")
+    async def public_run_one(run_id: str, request: Request):
+        return public_run(await get_run_obj(request, run_id), scrub, settings.public_payload_preview)
+
+    @app.get("/public/runs/{run_id}/events")
+    async def public_events(run_id: str, request: Request, after: int = 0, follow: bool = True,
+                            last_event_id: str | None = Header(default=None)):
+        run = await get_run_obj(request, run_id)
+        if last_event_id and last_event_id.isdigit():
+            after = max(after, int(last_event_id))
+        finished = run.status in ("done", "failed", "cancelled") or run_id not in orch(request).contexts
+        return sse(request, run_id, finished or not follow, after, lambda ev: public_event(ev, scrub))
+
+    @app.get("/public/queue")
+    async def public_queue(request: Request):
+        return {"length": len(orch(request).queue()), "judges_open": not desk(request).paused
+                and bool(settings.judge_secret)}
 
     # ----- desde las cajas -----
 
