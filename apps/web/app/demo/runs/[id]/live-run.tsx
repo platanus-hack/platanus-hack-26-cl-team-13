@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useLiveRun } from "@/hooks/useLiveRun";
 
 export function LiveRun({ id }: { id: string }) {
-  const { run, events, diffs, stream, error, cancel } = useLiveRun(id);
+  const { run, events, diffs, chain, stream, error, cancel } = useLiveRun(id);
 
   if (error && !run) {
     return (
@@ -40,7 +40,7 @@ export function LiveRun({ id }: { id: string }) {
       <Link href="/demo/panel" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" aria-hidden /> Panel del equipo
       </Link>
-      <RunView run={run} events={events} diffs={diffs} source="live" stream={stream} onCancel={cancel} />
+      <RunView run={run} events={events} diffs={diffs} chain={chain} source="live" stream={stream} onCancel={cancel} />
     </div>
   );
 }

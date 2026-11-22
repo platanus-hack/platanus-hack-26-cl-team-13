@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Diffs } from "@/components/run/run-tables";
 import { ApiError, api, post } from "@/lib/api";
-import type { GEvent, Run } from "@/lib/types";
+import { FINISHED, type GEvent, type Run, type RunChain } from "@/lib/types";
 import { useRunStream } from "./useRunStream";
 
 // Tipos que cambian el estado de la corrida: tras ellos se relee GET /runs/{id}
@@ -27,6 +27,7 @@ export function useLiveRun(id: string) {
   const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [diffs, setDiffs] = useState<Diffs>({});
+  const [chain, setChain] = useState<RunChain | null>(null);
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
   const asked = useRef(new Set<string>());
 
@@ -78,7 +79,17 @@ export function useLiveRun(id: string) {
     }
   }, [run, id]);
 
+  // La cadena se pide al terminar y otra vez si llega una filtración tardía (canary)
+  const finished = run ? FINISHED.includes(run.status) : false;
+  const leakCount = events.filter((e) => e.type === "leak.detected").length;
+  useEffect(() => {
+    if (!finished) return;
+    api<RunChain>(`/runs/${id}/chain`)
+      .then(setChain)
+      .catch(() => {}); // una API sin /chain (versión anterior): el panel dice que no hay cadena
+  }, [finished, leakCount, id]);
+
   const cancel = useCallback(() => post(`/runs/${id}/cancel`).then(load), [id, load]);
 
-  return { run, events, diffs, stream: state, error, cancel };
+  return { run, events, diffs, chain, stream: state, error, cancel };
 }

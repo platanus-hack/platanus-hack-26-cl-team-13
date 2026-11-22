@@ -116,6 +116,7 @@ export function ReplayPlayer({ id }: { id: string }) {
         run={player.run}
         events={player.events}
         diffs={rec.diffs}
+        chain={player.state === "ended" ? rec.chain : null}
         source="recording"
         stream={stream}
         title={rec.meta.title}

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { api, isLiveUnavailable, post } from "@/lib/api";
 import { PRESETS, VECTOR_LABEL } from "@/lib/presets";
-import type { Budget, Task, Vector } from "@/lib/types";
+import { ABLATIONS, type Budget, type Task, type Vector } from "@/lib/types";
 
 // Ruta de la vista en vivo de una corrida
 export const RUN_PATH = (id: string) => `/demo/runs/${id}`;
@@ -37,7 +37,8 @@ function LiveDownNotice({ reason }: { reason: Exclude<LiveDown, null> }) {
   );
 }
 
-export function LaunchForm() {
+// ablations: muestra las ablaciones del gemelo (solo en el panel del equipo; la vitrina no las ve)
+export function LaunchForm({ ablations = false }: { ablations?: boolean }) {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskId, setTaskId] = useState("");
@@ -47,6 +48,7 @@ export function LaunchForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [liveDown, setLiveDown] = useState<LiveDown>(null);
+  const [ablate, setAblate] = useState<string[]>([]);
 
   useEffect(() => {
     api<Task[]>("/tasks")
@@ -79,6 +81,7 @@ export function LaunchForm() {
       const r = await post<{ run_id: string }>("/runs", {
         task_id: taskId,
         attack: payload.trim() ? { vector, payload, author: author || null } : null,
+        ...(ablate.length ? { ablate } : {}),
       });
       router.push(RUN_PATH(r.run_id));
     } catch (err) {
@@ -131,6 +134,24 @@ export function LaunchForm() {
             onChange={(e) => setAuthor(e.target.value)}
           />
         </div>
+        {ablations && (
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="mb-1.5 text-sm font-medium">Ablaciones del gemelo (opcional)</legend>
+            {ABLATIONS.map((a) => (
+              <label key={a.id} className="flex cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 shrink-0 accent-primary"
+                  checked={ablate.includes(a.id)}
+                  onChange={(e) => setAblate((v) => (e.target.checked ? [...v, a.id] : v.filter((x) => x !== a.id)))}
+                />
+                <span className="min-w-0">
+                  {a.label} <span className="text-xs text-muted-foreground">· {a.detail}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        )}
       </div>
       <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex flex-wrap items-center justify-between gap-2">

@@ -70,7 +70,7 @@ function BudgetCard() {
           {b.live_enabled ? "En vivo habilitado" : "En vivo pausado: la web muestra las grabaciones"}
         </span>
       </div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 tabular-nums">
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 tabular-nums [&_dd]:[overflow-wrap:anywhere]">
         <dt className="text-muted-foreground">Gastado</dt>
         <dd>{usd(b.spent_usd)}</dd>
         <dt className="text-muted-foreground">Comprometido</dt>
@@ -223,7 +223,7 @@ export function PanelHome() {
           <h2 id="new-run" className="text-xl font-semibold">
             Corrida nueva
           </h2>
-          <LaunchForm />
+          <LaunchForm ablations />
         </section>
         <section aria-labelledby="queue-title" className="flex flex-col gap-3 rounded-xl border bg-card p-4">
           <h2 id="queue-title" className="text-xl font-semibold">

@@ -1,5 +1,5 @@
 import { fmtTime } from "@/lib/api";
-import { describe } from "@/lib/events";
+import { describe, isAttackerLeak } from "@/lib/events";
 import type { GEvent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,7 @@ const CLS: Record<string, string> = {
   err: "text-destructive",
   cut: "text-blocked",
   allow: "text-safe",
+  caught: "text-safe font-semibold",
   info: "text-muted-foreground",
   text: "text-foreground/90",
 };
@@ -17,7 +18,7 @@ const CLS: Record<string, string> = {
 export function EventLine({ ev, showWhere = false }: { ev: GEvent; showWhere?: boolean }) {
   const { cls, text, detail } = describe(ev);
   const where = showWhere && ev.lane ? `${ev.lane}${ev.role && ev.role !== "unico" ? "/" + ev.role : ""}` : "";
-  const honey = ev.type === "leak.detected" && ev.data?.pool === "A";
+  const honey = isAttackerLeak(ev) && ev.data?.pool === "A";
   const head = (
     <>
       <span className="shrink-0 text-muted-foreground/70">

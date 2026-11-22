@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { fmtTime } from "@/lib/api";
-import { describe } from "@/lib/events";
+import { describe, isDiffCatch } from "@/lib/events";
 import { LANE_LABEL, LANE_ORDER, type GEvent, type Run } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { BoolText, ToneBadge, VerdictBadge } from "./badges";
@@ -89,9 +89,13 @@ export function LeakTable({ leaks }: { leaks: GEvent[] }) {
               <TableCell>{e.role}</TableCell>
               <TableCell className="tabular-nums">{e.step ?? "?"}</TableCell>
               <TableCell>
-                <ToneBadge tone={e.data?.pool === "B" ? "leak" : "honey"}>
-                  {e.data?.pool === "B" ? "llave real" : "honeytoken"}
-                </ToneBadge>
+                {isDiffCatch(e) ? (
+                  <ToneBadge tone="safe">frenada en el diff</ToneBadge>
+                ) : (
+                  <ToneBadge tone={e.data?.pool === "B" ? "leak" : "honey"}>
+                    {e.data?.pool === "B" ? "llave real" : "honeytoken"}
+                  </ToneBadge>
+                )}
                 {e.data?.late && <span className="ml-1 text-xs text-muted-foreground">tardía</span>}
               </TableCell>
               <TableCell className="font-mono text-xs">{e.data?.env_name}</TableCell>
