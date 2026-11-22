@@ -42,12 +42,13 @@ TUNNELS: dict[str, set[asyncio.StreamWriter]] = {}
 _pool = ThreadPoolExecutor(4)
 
 
-def report(ip: str, host: str, port: int, decision: str, reason: str) -> None:
+def report(ip: str, host: str, port: int, decision: str, reason: str, url: str | None = None) -> None:
     if not EVENTS_URL:
         return
     pol = POLICIES.get(ip, {})
     body = json.dumps({"ip": ip, "run_id": pol.get("run_id"), "lane": pol.get("lane"), "role": pol.get("role"),
-                       "host": host, "port": port, "decision": decision, "reason": reason}).encode()
+                       "host": host, "port": port, "decision": decision, "reason": reason,
+                       "url": url}).encode()
 
     def send():
         try:
@@ -166,7 +167,9 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> 
         return
     host, port = u.hostname, u.port or 80
     ok, reason = decide(src_ip, host, port)
-    report(src_ip, host, port, "allow" if ok else "deny", reason)
+    # La URL completa solo es visible en HTTP plano (en CONNECT va cifrada): es el canal
+    # por donde la query de un dominio permitido puede sacar un secreto de la caja.
+    report(src_ip, host, port, "allow" if ok else "deny", reason, url=target)
     if not ok:
         await deny(writer, reason)
         return

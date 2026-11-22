@@ -489,16 +489,25 @@ class Orchestrator:
         await self.consolidate(rc)
 
     async def handle_egress(self, d: dict) -> None:
-        """Decisión del proxy de salida. Las permitidas hacia gateway y hooks no se emiten."""
+        """Decisión del proxy de salida. Las permitidas hacia gateway y hooks no se emiten.
+
+        Endurecimiento allowlist-exfil: en HTTP plano el proxy reporta la URL completa, y la
+        query de un dominio permitido puede llevar un secreto de la caja (p. ej. el gemelo
+        bajo saliendo a un host de su allowlist). Se escanea como exfiltración (source=egress);
+        en gemelo eso marca la corrida como leaked, que es una falla de aislamiento real.
+        """
         rc = self.contexts.get(str(d.get("run_id") or ""))
         lane, role = d.get("lane"), d.get("role")
         if rc is None or lane not in rc.run.lanes or d.get("reason") == "always":
             return
+        url = str(d.get("url") or "")
+        if url and d.get("decision") == "allow":
+            await self.leaks.scan_payload(url, channel="egress", source="egress")
         box = rc.run.lanes[lane].boxes.get(role)
         if d.get("decision") == "deny":
             rc.bump(lane, "egress.denied")
         await self.emit(rc, "net.egress", {"host": d.get("host"), "port": d.get("port"), "decision": d.get("decision"),
-                                          "reason": d.get("reason")},
+                                          "reason": d.get("reason"), "url": url or None},
                         lane=lane, role=role, step=box.step if box else None)
 
     # ---------- hooks ----------

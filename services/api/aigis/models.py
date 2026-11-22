@@ -144,7 +144,7 @@ class Leak(BaseModel):
     role: Role
     secret_id: str
     pool: Pool
-    source: Literal["attacker", "canary", "scanner"]
+    source: Literal["attacker", "canary", "scanner", "egress"]
     encoding: str
     channel: str | None = None
     step: int | None = None

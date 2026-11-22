@@ -24,6 +24,7 @@ def test_attack_shape(aid):
     a = ATTACKS[aid]
     assert a.vectors, aid
     assert a.channel, aid
+    assert a.kind in ("code", "model"), aid
     assert a.notes, aid  # cada ataque declara su hipótesis / kind / esperado
     # Resolver a un Attack con un vector válido
     atk = a.to_attack()

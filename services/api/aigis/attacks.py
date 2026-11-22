@@ -9,6 +9,7 @@ docs) con dos marcadores que el orquestador reemplaza al preparar la corrida:
 from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
+from typing import Literal
 from urllib.parse import urlparse
 
 import yaml
@@ -26,6 +27,9 @@ class CatalogAttack(BaseModel):
     technique: str
     channel: str                       # http, webfetch, dns, git, diff, test, supply-chain
     vectors: list[AttackVector]
+    # code = el código corre solo, no depende del modelo; model = depende de que el modelo
+    # acepte la inyección (aunque también inyecte archivos, como docs-checker).
+    kind: Literal["code", "model"] = "model"
     payload: str = Field(default="", max_length=8192)
     # Archivos que el ataque inyecta en el repo, antes del commit base. El contenido vive en
     # attacks/files/<id>/<ruta> y para el agente son parte del proyecto. Para ataques tipo
