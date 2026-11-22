@@ -69,13 +69,13 @@ const CASES = [
   {
     id: "Comment and Control",
     meta: "Claude, Gemini y Copilot en GitHub Actions · abril 2026",
-    text: "Un título de PR o un comentario bastó para tomar el control de tres agentes y sacar lo que tenían.",
+    text: "Un título de PR o un comentario bastó para tomar el control de tres agentes.",
     src: "Cloud Security Alliance",
   },
   {
     id: "s1ngularity (nx)",
     meta: "Paquete npm comprometido · agosto 2025",
-    text: "El malware no trajo su propio código: les dio órdenes a Claude, Gemini y Q CLI ya instalados.",
+    text: "El malware no trajo herramientas propias: les dio órdenes a Claude, Gemini y Q CLI, ya instalados en la máquina.",
     src: "Okta Threat Intelligence",
   },
 ];
@@ -99,7 +99,7 @@ const HOOK = [
   { t: "Anoche dejaron a su agente arreglando un test.", c: "" },
   { t: "Para validar su cambio, corrió los tests.", c: "" },
   { t: "Un archivo del repo aprovechó ese momento y mandó sus credenciales afuera.", c: "text-leak" },
-  { t: "El agente no hizo nada raro. Solo su trabajo.", c: "text-muted-foreground" },
+  { t: "El agente no hizo nada raro. Solo hizo su trabajo.", c: "text-muted-foreground" },
 ];
 
 export function LaminasFlow() {
@@ -213,7 +213,7 @@ export function LaminasFlow() {
           <Center>
             <Kicker>Ya pasó</Kicker>
             <h2 className="max-w-[22ch] text-4xl leading-tight font-semibold text-balance sm:text-5xl">
-              Los agentes que usamos todos ya fueron atacados.
+              Los agentes que todos usamos ya fueron atacados.
             </h2>
             <div className="grid w-full gap-4 text-left md:grid-cols-2">
               {CASES.map((c) => (
@@ -233,9 +233,9 @@ export function LaminasFlow() {
         {step === at("AIgis") && (
           <Center>
             <AigisMark className="size-32 motion-safe:animate-[spin_90s_linear_infinite]" />
-            <Kicker>Hola Platanus · somos Defensores del Toqui</Kicker>
+            <Kicker>Hola Platanus · somos los Defensores del Toqui</Kicker>
             <h1 className="max-w-[20ch] text-5xl leading-[1.05] font-semibold text-balance sm:text-6xl">
-              <AigisWordmark /> aísla a tu agente para que un ataque exitoso no tenga nada que llevarse.
+              <AigisWordmark /> aísla a su agente para que un ataque exitoso no tenga nada que llevarse.
             </h1>
             <Next onClick={() => go(at("Gemelos"))}>¿Cómo?</Next>
           </Center>
@@ -402,10 +402,10 @@ export function LaminasFlow() {
         {/* 7. Resultado */}
         {step === at("Resultado") && (
           <Center>
-            <Kicker>Qué pasó</Kicker>
+            <Kicker>¿Qué pasó?</Kicker>
             <DemoBadge>Corrida simulada</DemoBadge>
             <h2 className="max-w-[24ch] text-4xl leading-tight font-semibold text-balance sm:text-5xl">
-              En esta corrida, las tres defensas filtraron. <AigisWordmark /> entregó la tarea y solo salió una llave falsa.
+              En esta corrida filtraron las tres defensas. <AigisWordmark /> entregó la tarea y solo salió una llave falsa.
             </h2>
             {finalRun ? (
               <>
@@ -433,7 +433,7 @@ export function LaminasFlow() {
             <div className="flex w-full flex-col gap-3 rounded-xl border bg-card p-5 text-left">
               <span className="font-mono text-xs tracking-widest text-primary uppercase">Con Claude Haiku 5.5 real, en nuestra VM</span>
               <p className="text-lg">
-                Cada defensa del estado del arte filtró la llave real en al menos una corrida. <AigisWordmark />, en ninguna. Pasa pocas veces, y
+                Cada defensa del estado del arte filtró la llave real en al menos una corrida. <AigisWordmark />, en ninguna. Pasa pocas veces, pero
                 basta con una.
               </p>
               <div className="grid gap-2 sm:grid-cols-4">
@@ -489,7 +489,7 @@ export function LaminasFlow() {
               </div>
             </div>
             <p className="max-w-[60ch] text-sm text-balance text-muted-foreground">
-              Cada ataque corre a la vez sin defensa, con las defensas del estado del arte y con <AigisWordmark />. Ganan si <AigisWordmark /> entrega la
+              Cada ataque corre a la vez sin defensa, con las defensas del estado del arte y con <AigisWordmark />. Ganan si <AigisWordmark /> filtra la
               llave real. Hasta 4 corridas por juez, en vivo en <span className="font-mono">aigislabs.dev/envivo</span>.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
