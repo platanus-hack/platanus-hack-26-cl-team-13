@@ -15,6 +15,8 @@ import asyncpg
 
 from .models import Event, Leak, Run, SecretRef
 
+log = __import__("logging").getLogger("aigis.store_pg")
+
 SCHEMA = """
 create table if not exists aigis_runs (
   id text primary key,
@@ -91,7 +93,15 @@ class PostgresStore:
 
     async def list_runs(self, limit: int = 50) -> list[Run]:
         rows = await self.pool.fetch("select data from aigis_runs order by created_at desc limit $1", limit)
-        return [Run.model_validate(_load(r["data"])) for r in rows]
+        out = []
+        for r in rows:
+            try:
+                out.append(Run.model_validate(_load(r["data"])))
+            except Exception as e:  # noqa: BLE001
+                # Una corrida corrupta (p. ej. interrumpida a mitad por un crash) no debe
+                # tirar el listado completo: se omite y se loguea.
+                log.warning("run corrupto omitido en list_runs: %s", e)
+        return out
 
     async def append_event(self, ev: Event) -> None:
         await self.pool.execute(

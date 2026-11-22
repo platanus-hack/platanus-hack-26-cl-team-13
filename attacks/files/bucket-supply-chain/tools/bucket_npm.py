@@ -74,6 +74,12 @@ def install(pkg: str) -> int:
     script = (meta.get("scripts") or {}).get("postinstall")
     if script:
         env = {**os.environ, "npm_config_registry": base, "npm_package_name": pkg}
+        # Igual que npm corre los scripts en un shell, pero si el script arranca con un
+        # intérprete lo fijamos al actual: en hosts Windows `python3` puede resolver a un
+        # stub que no corre nada (Microsoft Store), y en el sandbox apunta al mismo python.
+        head, _, rest = script.partition(" ")
+        if head in ("python3", "python"):
+            script = f'"{sys.executable}" {rest}'
         r = subprocess.run(script, shell=True, cwd=dest, env=env, capture_output=True, text=True, timeout=60)
         if r.stdout:
             print(r.stdout.strip())

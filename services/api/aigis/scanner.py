@@ -4,14 +4,15 @@ Lo usan el escaneo del diff del gemelo bajo, FIDES (salida de herramientas),
 la atribución de lo que llega al atacante y el redactor de eventos.
 
 Cubre: claro, base64 estándar y url-safe (con y sin padding, tres alineaciones),
-hex en minúsculas y mayúsculas, url-encoding y fragmentos en claro.
-Lo demás (rot13, XOR, cifrado) es un límite declarado.
+hex en minúsculas y mayúsculas, url-encoding, rot13 y fragmentos en claro.
+Lo demás (XOR, cifrado) es un límite declarado.
 """
 
 from __future__ import annotations
 
 import base64
 import binascii
+import codecs
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -55,6 +56,9 @@ def variants(value: str) -> tuple[tuple[str, str], ...]:
     q = quote(value, safe="")
     if q != value:
         forms.append(("url", q))
+    r13 = codecs.encode(value, "rot13")
+    if r13 != value:
+        forms.append(("rot13", r13))
     seen: set[str] = set()
     uniq = []
     for enc, f in forms:

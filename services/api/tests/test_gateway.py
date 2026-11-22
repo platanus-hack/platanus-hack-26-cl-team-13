@@ -278,3 +278,29 @@ def test_precio_cache_y_contexto_largo():
     long = t.cost("claude-haiku-5-5", Usage(input_tokens=200_000))
     assert long == pytest.approx(200_000 * 0.10 * 5 / 1e6)
     assert t.cost("modelo-raro", Usage(input_tokens=1000)) > t.cost("claude-opus-5-5", Usage(input_tokens=1000))
+
+# ---------- saneamiento del body: sin canal de salida por el gateway ----------
+
+def test_sin_tools_de_servidor_ni_mcp_servers(client, up):
+    """El bajo tiene la URL y el token del gateway: tools de servidor (las ejecuta el
+    upstream) y mcp_servers ser�an una salida a internet que salta el aislamiento."""
+    tok = issue(client)
+    body = {
+        "model": "claude-haiku-5-5", "max_tokens": 100,
+        "messages": [{"role": "user", "content": "hola"}],
+        "tools": [
+            {"type": "web_search_20260217", "name": "web_search", "max_uses": 2},
+            {"type": "web_fetch_20260217", "name": "web_fetch"},
+            {"name": "leer_archivo", "description": "custom local", "input_schema": {"type": "object"}},
+        ],
+        "mcp_servers": [{"name": "atacante", "url": "http://atacante.test/mcp"}],
+    }
+    h = {"anthropic-version": "2023-06-01", "Authorization": f"Bearer {tok}", "anthropic-beta": "web-search-2026"}
+    r = client.post("/v1/messages", headers=h, json=body)
+    assert r.status_code == 200, r.text
+    sent = json.loads(up.calls[-1].content)
+    assert sent["tools"] == [{"name": "leer_archivo", "description": "custom local",
+                              "input_schema": {"type": "object"}}], sent.get("tools")
+    assert "mcp_servers" not in sent
+    assert "anthropic-beta" not in up.calls[-1].headers
+    assert "web_search" not in sent.keys() or sent.get("web_search") is None

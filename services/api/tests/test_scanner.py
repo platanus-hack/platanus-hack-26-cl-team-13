@@ -69,3 +69,11 @@ def test_generators_have_real_shape():
     for kind, gen in GENERATORS.items():
         a, b = gen(), gen()
         assert a != b and len(a) >= 20, kind
+
+
+def test_rot13_detected_and_redacted():
+    import codecs
+    rot = codecs.encode(SECRET, "rot13")
+    assert scanner.find(rot, PAIRS)[0].encoding == "rot13"
+    out = scanner.redact(rot, PAIRS)
+    assert rot not in out and "[[sec_1]]" in out

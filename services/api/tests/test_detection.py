@@ -204,7 +204,10 @@ def test_la_divergencia_no_deja_formas_codificadas_del_secreto():
 # ---------- G + D: cadena y ablaciones, de punta a punta ----------
 
 def test_cadena_y_divergencia_en_una_corrida(harness):
-    run_id, run = _run(harness, attack_id="repo-conftest", lanes=["none", "gemelo"])
+    # blind-post: su exfil va por el paso `http` del guion, que respeta la política de red
+    # del provider fake. repo-conftest no sirve aquí: su conftest corre como subproceso del
+    # host, que en fake no está aislado, y el bajo "leakearía" pool B sin ser real.
+    run_id, run = _run(harness, attack_id="blind-post", lanes=["none", "gemelo"])
     assert run["lanes"]["gemelo"]["result"]["divergence"]["steps"]["bajo"] > 0
     with harness.client() as c:
         ch = c.get(f"/runs/{run_id}/chain").json()
