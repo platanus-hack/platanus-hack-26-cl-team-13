@@ -5,12 +5,14 @@ import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { duration, fmtDate } from "@/lib/api";
-import { describe } from "@/lib/events";
+import { describe, isAttackerLeak } from "@/lib/events";
 import { VECTOR_LABEL } from "@/lib/presets";
-import type { GEvent, Run } from "@/lib/types";
+import { ABLATIONS, type GEvent, type Run, type RunChain } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AttackerPanel, CanaryAlert } from "./attacker-panel";
 import { StatusBadge, ToneBadge } from "./badges";
+import { ChainPanel } from "./chain-panel";
+import { DivergencePanel } from "./divergence-panel";
 import { LaneGrid } from "./lane-grid";
 import { DiffViewer, type Diffs, EventLog, LeakTable, ResultsTable } from "./run-tables";
 
@@ -87,6 +89,16 @@ function RunHeader({
             <span>{fmtDate(run.created_at)}</span>
             <span className="tabular-nums">{duration(run.created_at, run.ended_at)}</span>
           </div>
+          {run.ablate && run.ablate.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-xs text-muted-foreground">ablación:</span>
+              {run.ablate.map((a) => (
+                <ToneBadge key={a} tone="warn">
+                  {ABLATIONS.find((x) => x.id === a)?.label ?? a}
+                </ToneBadge>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge s={run.status} />
@@ -127,10 +139,12 @@ export function RunView({
   title,
   onCancel,
   controls,
+  chain,
 }: {
   run: Run;
   events: GEvent[];
   diffs: Diffs;
+  chain?: RunChain | null;
   source: SourceMode;
   stream: StreamState;
   title?: string;
@@ -142,7 +156,11 @@ export function RunView({
     for (const e of events) if (e.lane) (m[e.lane] ||= []).push(e);
     return m;
   }, [events]);
-  const leaks = useMemo(() => events.filter((e) => e.type === "leak.detected"), [events]);
+  // Lo que llegó afuera. Los hallazgos del escáner del diff (source: scanner) no salieron:
+  // se ven en el log, en la tabla de filtraciones y en la cadena, no como filtración.
+  const leaks = useMemo(() => events.filter(isAttackerLeak), [events]);
+  const leakEvents = useMemo(() => events.filter((e) => e.type === "leak.detected"), [events]);
+  const divergence = run.lanes.gemelo?.result?.divergence;
   const runErrors = events.filter((e) => e.type === "error" && !e.lane);
   const finished = ["done", "failed", "cancelled"].includes(run.status);
   const laneReady = (lane: string) => finished || Boolean(run.lanes[lane]?.result);
@@ -174,6 +192,8 @@ export function RunView({
           <TabsList className="max-w-full justify-start overflow-x-auto">
             <TabsTrigger value="resultados">Resultados</TabsTrigger>
             <TabsTrigger value="filtraciones">Filtraciones{leaks.length ? ` (${leaks.length})` : ""}</TabsTrigger>
+            <TabsTrigger value="cadena">Cadena</TabsTrigger>
+            {run.lanes.gemelo && <TabsTrigger value="gemelos">Gemelos</TabsTrigger>}
             <TabsTrigger value="diff">Diff</TabsTrigger>
             <TabsTrigger value="log">Log ({events.length})</TabsTrigger>
           </TabsList>
@@ -181,8 +201,16 @@ export function RunView({
             <ResultsTable run={run} />
           </TabsContent>
           <TabsContent value="filtraciones" className="pt-3">
-            <LeakTable leaks={leaks} />
+            <LeakTable leaks={leakEvents} />
           </TabsContent>
+          <TabsContent value="cadena" className="pt-3">
+            <ChainPanel run={run} chain={chain} ready={finished} />
+          </TabsContent>
+          {run.lanes.gemelo && (
+            <TabsContent value="gemelos" className="pt-3">
+              <DivergencePanel d={divergence} ready={laneReady("gemelo")} />
+            </TabsContent>
+          )}
           <TabsContent value="diff" className="pt-3">
             <DiffViewer run={run} diffs={diffs} ready={laneReady} />
           </TabsContent>

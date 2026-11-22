@@ -43,6 +43,42 @@ export interface TwinDivergence {
   counterfactual_leak: { steps: DivergenceStep[]; hosts: string[] } | null;
 }
 
+// GET /runs/{id}/chain (services/api/aigis/chain.py): qué hizo cada caja, en orden
+export type ChainStage = "untrusted" | "secret" | "encode" | "egress" | "blocked" | "caught" | "leak" | "canary";
+export type ChainOutcome = "secret_leaked" | "caught_in_diff" | "honeytoken_only" | "blocked" | "egress_no_leak" | "clean";
+
+export interface ChainLink {
+  stage: ChainStage;
+  step: number | null;
+  seq: number;
+  ts: string;
+  detail: string;
+}
+
+export interface ChainLane {
+  reached: ChainStage[];
+  complete: boolean;
+  outcome: ChainOutcome;
+  verdict: string | null;
+  roles: Record<string, ChainLink[]>;
+}
+
+export interface RunChain {
+  run_id: string;
+  task_id: string;
+  attack: string | null;
+  lanes: Record<string, ChainLane>;
+}
+
+// Ablaciones del gemelo (POST /runs con ablate): apagan una pieza para medir cuánto aporta
+export const ABLATIONS: { id: string; label: string; detail: string }[] = [
+  { id: "honeytokens", label: "Sin honeytokens", detail: "el alto corre sin .env" },
+  { id: "diff_scan", label: "Sin escáner del diff", detail: "el diff se entrega aunque traiga un secreto" },
+  { id: "handoff", label: "Sin traspaso", detail: "no pasa nada del alto al bajo" },
+  { id: "allowlist", label: "Sin allowlist", detail: "el bajo queda sin red alguna" },
+  { id: "low_hints", label: "Sin aviso al bajo", detail: "no se le dice que mire /handoff" },
+];
+
 export interface Box {
   role: Role;
   sandbox_id: string | null;

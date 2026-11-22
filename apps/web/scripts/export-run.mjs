@@ -113,6 +113,16 @@ async function getDiff(id, lane) {
   return { error: `Error ${r.status}: ${detail}` };
 }
 
+// La cadena del ataque (GET /runs/{id}/chain). Una API anterior no la tiene: se exporta sin ella.
+async function getChain(id) {
+  const r = await get(`/runs/${id}/chain`);
+  if (!r.ok) {
+    console.error(`sin cadena: GET /runs/${id}/chain respondió ${r.status}`);
+    return null;
+  }
+  return r.json();
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const id = opts.runId;
@@ -134,6 +144,7 @@ async function main() {
   const events = await getEvents(id);
   const diffs = {};
   for (const lane of Object.keys(run.lanes)) diffs[lane] = await getDiff(id, lane);
+  const chain = await getChain(id);
 
   const outId = opts.id || id;
   const recording = {
@@ -149,6 +160,7 @@ async function main() {
     run,
     events,
     diffs,
+    chain,
   };
 
   await mkdir(opts.out, { recursive: true });
