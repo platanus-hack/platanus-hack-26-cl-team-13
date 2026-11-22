@@ -55,7 +55,8 @@ class RunCtx:
     finished_agents: dict[tuple[str, str], bool] = field(default_factory=dict)
     counters: dict[tuple[str, str], int] = field(default_factory=dict)
     handoff_n: int = 0
-    # Acciones y salidas por caja, para comparar los gemelos (divergence.py). Solo en memoria.
+    # Acciones y salidas de las cajas del gemelo, para compararlas (divergence.py). Solo en memoria;
+    # los otros carriles no se guardan porque contexts vive todo el proceso.
     actions: dict[tuple[str, str], list[dict]] = field(default_factory=dict)
     outputs: dict[tuple[str, str], dict[int, str]] = field(default_factory=dict)
     handoff_seen: set[str] = field(default_factory=set)
@@ -582,7 +583,8 @@ class Orchestrator:
             box.step += 1
             box.step_times.append((box.step, time.time()))
             box.last_steps = (box.last_steps + [{"tool": tool, "input": tool_input}])[-10:]
-            rc.actions.setdefault((lane, role), []).append({"step": box.step, "tool": tool, "input": tool_input})
+            if lane == "gemelo":  # solo la divergencia de gemelos las usa
+                rc.actions.setdefault((lane, role), []).append({"step": box.step, "tool": tool, "input": tool_input})
             ctx = HookCtx(self, rc, lane, role, box, sb, box.step)
             try:
                 decision, reason = await asyncio.wait_for(defense.on_pre(ctx, tool, tool_input),
@@ -598,7 +600,8 @@ class Orchestrator:
 
         ctx = HookCtx(self, rc, lane, role, box, sb, box.step)
         resp = payload.get("tool_response")
-        rc.outputs.setdefault((lane, role), {})[box.step] = response_text(resp)[:20000]
+        if lane == "gemelo":
+            rc.outputs.setdefault((lane, role), {})[box.step] = response_text(resp)[:20000]
         try:
             await asyncio.wait_for(defense.on_post(ctx, tool, tool_input, resp), timeout=self.settings.hook_timeout_s * 2)
         except TimeoutError:

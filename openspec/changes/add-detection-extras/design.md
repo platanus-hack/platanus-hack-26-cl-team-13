@@ -14,7 +14,7 @@
 - La firma se valida contra el vector `get-vanilla` de la suite oficial de AWS.
 
 ## Divergencia entre gemelos
-- El hook `pre` guarda las acciones de cada caja (`step`, `tool`, `input`) y el `post` guarda las salidas, solo en memoria.
+- El hook `pre` guarda las acciones de las cajas del gemelo (`step`, `tool`, `input`) y el `post` guarda sus salidas, solo en memoria. Los otros carriles no se guardan: nadie los usa y los contextos de las corridas viven todo el proceso.
 - En cada acción y salida se reemplaza el valor de cada secreto por `<NOMBRE>`, en claro y en sus codificaciones (base64, hex, url), porque el resultado se sirve en `GET /runs/{id}` sin pasar por el redactor de eventos; se compara la secuencia de acciones y se calcula la similitud con `difflib`.
 - Causa del primer paso de divergencia:
   - `environment`: la salida del paso anterior difiere entre los gemelos. Es lo esperado, porque el bajo no tiene web.
