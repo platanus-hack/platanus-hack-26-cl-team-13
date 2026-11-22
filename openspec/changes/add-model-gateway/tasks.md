@@ -15,13 +15,13 @@
 
 ## 3. Record y replay
 
-- [ ] 3.1 Implementar `record` con un casete por corrida, carril y gemelo, sin headers de autenticación; verificar que el casete existe y no contiene la key ni el token
-- [ ] 3.2 Implementar `replay` por orden de llamada y el error de casete agotado; verificar los escenarios de prompt con variaciones, casete agotado y replay sin API key
+- [ ] ~~3.1 Implementar `record` con un casete por corrida, carril y gemelo, sin headers de autenticación; verificar que el casete existe y no contiene la key ni el token~~ **Recortado (D8)**
+- [ ] ~~3.2 Implementar `replay` por orden de llamada y el error de casete agotado; verificar los escenarios de prompt con variaciones, casete agotado y replay sin API key~~ **Recortado (D8)**: el plan B son las grabaciones estáticas de `apps/web/public/replays/` (`scripts/export-run.mjs`).
 
 ## 4. Cuentas y gasto
 
 - [ ] 4.1 Implementar la selección de cuenta por propósito y el registro de uso por llamada; verificar que el costo de una corrida es la suma de sus llamadas
-- [ ] 4.2 Implementar el corte al 90% por cuenta y la caída a replay para la cuenta de demo; verificar ambos escenarios con presupuestos pequeños en el test
+- [x] 4.2 Implementar el corte al 90% por cuenta y la caída a replay para la cuenta de demo; verificar ambos escenarios con presupuestos pequeños en el test. **Ajuste (D8)**: hay una sola cuenta upstream, así que el corte es global y vive en el orquestador (`AIGIS_BUDGET_USD`, `GET /budget`, 429 `budget`), y la caída es a las grabaciones estáticas (`tests/test_budget.py`).
 
 ## 5. Eventos de corrida
 
@@ -32,7 +32,7 @@
 ## 6. Spike F0 e integración
 
 - [ ] 6.1 Spike: Claude Code headless en un sandbox E2B, con `ANTHROPIC_BASE_URL` al gateway y `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, resuelve una tarea trivial; registrar en `design.md` caché, tamaño del system prompt y tráfico observado
-- [ ] 6.2 Grabar el primer casete en `record` y reproducirlo en `replay` sin keys; verificar que los eventos de ambas corridas tienen los mismos tipos
+- [ ] ~~6.2 Grabar el primer casete en `record` y reproducirlo en `replay` sin keys; verificar que los eventos de ambas corridas tienen los mismos tipos~~ **Recortado (D8)**
 
 ## Workflow follow-up
 

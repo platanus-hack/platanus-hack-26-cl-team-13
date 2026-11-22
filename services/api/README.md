@@ -23,6 +23,7 @@ Por defecto la API usa el provider Docker local (`AIGIS_SANDBOX_PROVIDER=local`)
 | Cajas en E2B | `AIGIS_SANDBOX_PROVIDER=e2b`, `E2B_API_KEY` y `AIGIS_PUBLIC_BASE_URL` |
 | Claude Code real | `AIGIS_AGENT=claude`, `AIGIS_GATEWAY_STUB=false` y la URL del gateway |
 | Pedir token en la API | `AIGIS_API_TOKEN` (en Render siempre) |
+| Corte global de presupuesto | `AIGIS_BUDGET_USD` (crédito live; 0 = sin corte) y `AIGIS_BUDGET_CUT_RATIO` (0.9) |
 | Guardar en Postgres | `DATABASE_URL` |
 | Conformidad Docker | `make sandbox-image` y `uv run pytest -m docker` |
 | Conformidad E2B | `uv run python -m aigis.providers.e2b_template` y `uv run pytest -m e2b` |
@@ -40,7 +41,11 @@ Las variables pueden ir en `.env` (ignorado por git). Todas llevan prefijo `AIGI
 | `GET` | `/runs/{id}/events?after=N` | SSE, reanudable con `Last-Event-ID` |
 | `GET` | `/runs/{id}/lanes/{lane}/diff` | diff; en gemelo solo si se entregó |
 | `POST` | `/runs/{id}/cancel` | cancela y limpia |
+| `GET` | `/runs/{id}/usage` | uso real del gateway; `by_lane` con claves `<carril>/<rol>` y `<carril>/monitor` |
+| `GET` | `/budget` | gasto real (`aigis_usage`) + reserva de `AIGIS_RUN_BUDGET_USD` por corrida sin terminar, contra el corte |
 | `GET` | `/queue` | cola visible |
+
+Con `AIGIS_BUDGET_USD` > 0, `POST /runs` responde **429 `{"error": "budget", "detail", "retry_after_s"}`** (el mismo contrato que la API de jueces) cuando la corrida nueva llevaría lo comprometido sobre `AIGIS_BUDGET_CUT_RATIO × AIGIS_BUDGET_USD`. La web cae entonces a las grabaciones.
 
 Con `AIGIS_API_TOKEN` definido, todas las rutas de esta tabla salvo `/health` piden `Authorization: Bearer <token>`. El panel web lo agrega en su proxy.
 

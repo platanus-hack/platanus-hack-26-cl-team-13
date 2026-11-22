@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import secrets as pysecrets
 import time
 from dataclasses import dataclass, field
@@ -33,6 +34,10 @@ from .models import Box, Lane, LaneResult, Run, RunRequest, SecretRef, now, role
 from .providers import NetworkProfile, Sandbox, SandboxProvider, SandboxSpec, run
 from .store import Store
 from .tasks import Task, iter_files, load_tasks
+
+log = logging.getLogger("aigis.runner")
+
+FINISHED = ("done", "failed", "cancelled")
 
 GIT = accept.GIT
 
@@ -145,6 +150,23 @@ class Orchestrator:
         await self._queue.put(run_.id)
         return run_
 
+    async def budget(self) -> dict:
+        """Gasto real (aigis_usage) más una reserva de run_budget_usd por corrida sin terminar.
+
+        `contexts` no se vacía (se guarda para las alertas tardías de canary): por eso se filtra
+        por estado y no se suma `_pending`, cuyas corridas también están en `contexts`.
+        """
+        s = self.settings
+        spent, counted = await self.store.total_cost()
+        in_flight = sum(1 for rc in self.contexts.values() if rc.run.status not in FINISHED)
+        committed = spent + in_flight * s.run_budget_usd
+        limit = s.budget_usd * s.budget_cut_ratio
+        live = s.budget_usd <= 0 or committed + s.run_budget_usd <= limit
+        return {"spent_usd": round(spent, 4), "committed_usd": round(committed, 4),
+                "reserved_per_run_usd": s.run_budget_usd, "in_flight": in_flight,
+                "budget_usd": s.budget_usd, "ratio": s.budget_cut_ratio,
+                "limit_usd": round(limit, 4), "live_enabled": live, "runs_counted": counted}
+
     def queue(self) -> list[dict]:
         return [{"run_id": rid, "position": i + 1, "task_id": self.contexts[rid].run.task_id}
                 for i, rid in enumerate(self._pending)]
@@ -254,8 +276,9 @@ class Orchestrator:
             try:
                 usage = await self.gateway.usage(rc.gateway_token)
                 await self.store.save_usage(rc.run.id, usage)
-            except Exception:
-                pass
+            except Exception as e:
+                # Ese gasto no queda en aigis_usage: el corte de presupuesto lo subestima (ver D8)
+                log.warning("no se guardó el uso de la corrida %s: %s", rc.run.id, type(e).__name__)
             try:
                 await self.gateway.revoke(rc.gateway_token)
             except Exception:

@@ -80,6 +80,20 @@ export interface Health {
   gateway_ok: boolean;
   agent: string;
   lanes: string[];
+  model?: string;
+}
+
+// GET /budget: gasto real (gateway) más la reserva de las corridas sin terminar
+export interface Budget {
+  spent_usd: number;
+  committed_usd: number;
+  reserved_per_run_usd: number;
+  in_flight: number;
+  budget_usd: number; // 0 = sin corte
+  ratio: number;
+  limit_usd: number;
+  live_enabled: boolean;
+  runs_counted: number;
 }
 
 // Orden de la API (catálogo de GET /lanes): base, estado del arte y AIgis al final

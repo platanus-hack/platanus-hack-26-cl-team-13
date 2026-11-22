@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     monitor_threshold: int = 7
 
     run_budget_usd: float = 2.50
+    # Crédito live total para corridas (0 = sin corte). Al comprometer budget_cut_ratio de él,
+    # POST /runs responde 429 {"error": "budget"} y la web cae a las grabaciones.
+    budget_usd: float = 0.0
+    budget_cut_ratio: float = 0.9
     agent_max_turns: int = 30
     agent_timeout_s: int = 600
     test_timeout_s: int = 300

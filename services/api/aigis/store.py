@@ -24,6 +24,9 @@ class Store(Protocol):
     async def save_diff(self, run_id: str, lane: str, role: str, diff: str) -> None: ...
     async def get_diff(self, run_id: str, lane: str, role: str) -> str | None: ...
     async def save_usage(self, run_id: str, usage: dict) -> None: ...
+    async def get_usage(self, run_id: str) -> dict | None: ...
+    # Gasto real acumulado (lo que reportó el gateway por corrida, monitor incluido)
+    async def total_cost(self) -> tuple[float, int]: ...
 
 
 class MemoryStore:
@@ -70,3 +73,9 @@ class MemoryStore:
 
     async def save_usage(self, run_id: str, usage: dict) -> None:
         self.usage[run_id] = usage
+
+    async def get_usage(self, run_id: str) -> dict | None:
+        return self.usage.get(run_id)
+
+    async def total_cost(self) -> tuple[float, int]:
+        return sum(float(u.get("cost_usd") or 0.0) for u in self.usage.values()), len(self.usage)
