@@ -30,6 +30,8 @@ export async function forwardTo(req: Request, sub: string, bearer?: string): Pro
   const out = new Headers();
   out.set("content-type", upstream.headers.get("content-type") || "application/json");
   out.set("cache-control", "no-cache, no-transform");
+  const retry = upstream.headers.get("retry-after");
+  if (retry) out.set("retry-after", retry);
   if (out.get("content-type")!.startsWith("text/event-stream") && upstream.body) {
     out.set("x-accel-buffering", "no");
     return new Response(withPing(upstream.body), { status: upstream.status, headers: out });
