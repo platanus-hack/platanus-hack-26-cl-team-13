@@ -1,9 +1,16 @@
 // Cliente del navegador: todo pasa por el proxy /api/gemelo
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  // code: el campo `error` del cuerpo, p. ej. "budget" (mismo contrato que la API de jueces)
+  constructor(public status: number, message: string, public code?: string) {
     super(message);
   }
+}
+
+// Sin corridas en vivo: se acabó el presupuesto (429 budget) o el orquestador no responde (502)
+export function isLiveUnavailable(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  return (err.status === 429 && err.code === "budget") || err.status === 502;
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -14,7 +21,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const ct = r.headers.get("content-type") || "";
   const body = ct.includes("json") ? await r.json() : await r.text();
-  if (!r.ok) throw new ApiError(r.status, typeof body === "string" ? body : body.detail ?? JSON.stringify(body));
+  if (!r.ok) {
+    if (typeof body === "string") throw new ApiError(r.status, body);
+    const msg = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail ?? body);
+    throw new ApiError(r.status, msg, typeof body.error === "string" ? body.error : undefined);
+  }
   return body as T;
 }
 

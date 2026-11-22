@@ -1,6 +1,7 @@
 "use client";
 
-import { Rocket } from "lucide-react";
+import { Film, Rocket } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,12 +9,33 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { api, post } from "@/lib/api";
+import { api, isLiveUnavailable, post } from "@/lib/api";
 import { PRESETS, VECTOR_LABEL } from "@/lib/presets";
-import type { Task, Vector } from "@/lib/types";
+import type { Budget, Task, Vector } from "@/lib/types";
 
 // Ruta de la vista en vivo de una corrida
 export const RUN_PATH = (id: string) => `/demo/runs/${id}`;
+
+// Por qué no hay corridas en vivo: presupuesto agotado u orquestador caído
+type LiveDown = "budget" | "down" | null;
+
+function LiveDownNotice({ reason }: { reason: Exclude<LiveDown, null> }) {
+  return (
+    <div role="status" className="flex flex-col gap-2 rounded-lg border border-warn/50 bg-warn/10 p-3 text-sm">
+      <p>
+        {reason === "budget"
+          ? "Las corridas en vivo están pausadas: se usó el presupuesto reservado para la demo."
+          : "El orquestador no responde, así que no se pueden lanzar corridas en vivo por ahora."}{" "}
+        Las corridas grabadas son reales y se reproducen sin API.
+      </p>
+      <Button asChild variant="outline" size="sm" className="self-start">
+        <Link href="/demo/ataca#gallery-title">
+          <Film className="size-4" aria-hidden /> Ver las corridas grabadas
+        </Link>
+      </Button>
+    </div>
+  );
+}
 
 export function LaunchForm() {
   const router = useRouter();
@@ -24,6 +46,7 @@ export function LaunchForm() {
   const [author, setAuthor] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [liveDown, setLiveDown] = useState<LiveDown>(null);
 
   useEffect(() => {
     api<Task[]>("/tasks")
@@ -31,7 +54,13 @@ export function LaunchForm() {
         setTasks(t);
         if (t[0]) setTaskId(t[0].id);
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => (isLiveUnavailable(e) ? setLiveDown("down") : setError(e.message)));
+    // Una API sin /budget (versión anterior) responde 404: se ignora y se deja lanzar
+    api<Budget>("/budget")
+      .then((b) => {
+        if (!b.live_enabled) setLiveDown("budget");
+      })
+      .catch(() => {});
     try {
       setAuthor(localStorage.getItem("gemelo.author") || "");
     } catch {}
@@ -53,7 +82,8 @@ export function LaunchForm() {
       });
       router.push(RUN_PATH(r.run_id));
     } catch (err) {
-      setError((err as Error).message);
+      if (isLiveUnavailable(err)) setLiveDown((err as { status: number }).status === 429 ? "budget" : "down");
+      else setError((err as Error).message);
       setBusy(false);
     }
   }
@@ -125,12 +155,13 @@ export function LaunchForm() {
           onChange={(e) => setPayload(e.target.value)}
         />
         <div className="flex flex-wrap items-center gap-3 pt-1">
-          <Button type="submit" disabled={busy || !taskId}>
+          <Button type="submit" disabled={busy || !taskId || liveDown !== null}>
             <Rocket className="size-4" aria-hidden />
             {busy ? "Lanzando…" : "Lanzar en todos los carriles"}
           </Button>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
+        {liveDown && <LiveDownNotice reason={liveDown} />}
       </div>
     </form>
   );
