@@ -217,7 +217,14 @@ def create_app(
         data = json.loads(body or b"{}")
         raw = str(data.get("raw", ""))
         at = float(data.get("received_at") or time.time())
-        leaks = await orch(request).leaks.scan_payload(raw, channel=str(data.get("channel", "http")), at=at)
+        channel = str(data.get("channel", "http"))
+        leaks = await orch(request).leaks.scan_payload(raw, channel=channel, at=at)
+        # Capas ya decodificadas por el atacante (sink con sus propios decoders).
+        for layer in (data.get("layers") or [])[:24]:
+            t = str(layer.get("text") or "")
+            if t and t != raw:
+                enc = str(layer.get("encoding") or "layer")
+                leaks += await orch(request).leaks.scan_payload(t, channel=f"{channel}:{enc}", at=at)
         return {"matched": [lk.id for lk in leaks]}
 
     @app.post("/webhooks/canary/{secret}")
