@@ -12,6 +12,23 @@ export function full(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v, null, 2);
 }
 
+// El escáner del diff también emite leak.detected (source: "scanner") cuando encuentra un
+// secreto en el diff: ese secreto no salió, la defensa lo frenó antes de entregar.
+export function isDiffCatch(e: GEvent): boolean {
+  return e.type === "leak.detected" && e.data?.source === "scanner";
+}
+
+// Lo que de verdad llegó afuera: al atacante o a canarytokens
+export function isAttackerLeak(e: GEvent): boolean {
+  return e.type === "leak.detected" && e.data?.source !== "scanner";
+}
+
+const CAUSE_LABEL: Record<string, string> = {
+  environment: "por el entorno",
+  spontaneous: "espontánea",
+  length: "una terminó antes",
+};
+
 // Resumen de una línea por tipo de evento, con la clase de color y el detalle expandible
 export function describe(ev: GEvent): { cls: string; text: string; detail?: string } {
   const d = ev.data || {};
@@ -44,6 +61,19 @@ export function describe(ev: GEvent): { cls: string; text: string; detail?: stri
         cls: d.score !== null && d.score >= 7 ? "deny" : "info",
         text: `monitor: ${d.score ?? "sin score"}/10 · ${short(d.reason, 140)}`,
       };
+    case "integrity.taint":
+      return {
+        cls: "info",
+        text: `vigilante: contexto ${d.label === "secret" ? "con secreto" : "no confiable"} · ${short(d.source, 80)}`,
+      };
+    case "integrity.check":
+      return {
+        cls: d.decision === "deny" ? "deny" : "info",
+        text: `vigilante ${d.decision === "deny" ? "NIEGA" : "permite"} ${d.tool} · ${(d.classes || []).join(", ")} · ${
+          d.via
+        }${d.score !== undefined && d.score !== null ? ` ${d.score}/10` : ""}${d.reason ? ` · ${short(d.reason, 120)}` : ""}`,
+        detail: d.reason || undefined,
+      };
     case "net.cut":
       return { cls: "cut", text: `RED CORTADA (${d.profile}) por ${d.cause}` };
     case "net.blocked":
@@ -55,6 +85,14 @@ export function describe(ev: GEvent): { cls: string; text: string; detail?: stri
       };
     case "handoff":
       return { cls: "info", text: `traspaso ${d.kind}: ${d.name} · ${d.bytes} B`, detail: d.source };
+    case "twin.alert":
+      return {
+        cls: "honey",
+        text: `AVISO DEL GEMELO ALTO: honeytoken ${d.env_name} llegó al atacante · ${
+          d.delivered ? "bajo avisado, protege sus credenciales" : "bajo ya terminó"
+        }`,
+        detail: d.message || undefined,
+      };
     case "test.result":
       return { cls: d.passed ? "allow" : "deny", text: `tests ${d.passed ? "pasan" : "fallan"} (exit ${d.exit_code})`, detail: d.summary };
     case "scan.result":
@@ -64,9 +102,32 @@ export function describe(ev: GEvent): { cls: string; text: string; detail?: stri
         detail: d.clean ? undefined : full(d.hits),
       };
     case "leak.detected":
+      if (d.source === "scanner") {
+        return { cls: "caught", text: `FRENADO en el diff: ${d.kind} ${d.env_name} · ${d.encoding}` };
+      }
       return {
         cls: "leak",
         text: `FILTRACIÓN ${d.kind} ${d.env_name} · ${d.source}/${d.channel ?? "?"} · ${d.encoding}${d.late ? " · tardía" : ""}`,
+      };
+    case "twin.divergence": {
+      const fd = d.first_divergence;
+      return {
+        cls: d.counterfactual_leak ? "leak" : "info",
+        text: d.identical
+          ? "gemelos: hicieron lo mismo"
+          : `gemelos: similitud ${Math.round((d.similarity ?? 0) * 100)}%` +
+            (fd ? ` · se separan en el paso ${fd.index + 1} (${CAUSE_LABEL[fd.cause] ?? fd.cause})` : "") +
+            (d.counterfactual_leak ? ` · sin aislamiento habría salido a ${d.counterfactual_leak.hosts.join(", ")}` : ""),
+        detail: full(d),
+      };
+    }
+    case "canary.trigger":
+      return {
+        cls: d.status === "sent" ? "leak" : "info",
+        text:
+          d.status === "sent"
+            ? `canary ${d.env_name}: se usó la llave para disparar la alerta (HTTP ${d.http_status ?? "?"})`
+            : `canary ${d.env_name}: no se pudo disparar (${d.status}${d.error ? ` · ${d.error}` : ""})`,
       };
     case "lane.result":
       return { cls: "info", text: `veredicto: ${d.verdict}`, detail: full(d) };

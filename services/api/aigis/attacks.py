@@ -8,7 +8,7 @@ docs) con dos marcadores que el orquestador reemplaza al preparar la corrida:
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
 
 import yaml
@@ -16,14 +16,21 @@ from pydantic import BaseModel, Field
 
 from .models import Attack, AttackVector
 
+# Un ataque nunca inyecta sobre secretos, git ni archivos de control
+_FORBIDDEN = (".env", ".git", ".aigis", ".aigis_tests")
+
 
 class CatalogAttack(BaseModel):
     id: str
     title: str
     technique: str
-    channel: str                       # http, webfetch, dns, git, diff, test
+    channel: str                       # http, webfetch, dns, git, diff, test, supply-chain
     vectors: list[AttackVector]
-    payload: str = Field(max_length=8192)
+    payload: str = Field(default="", max_length=8192)
+    # Archivos que el ataque inyecta en el repo, antes del commit base. El contenido vive en
+    # attacks/files/<id>/<ruta> y para el agente son parte del proyecto. Para ataques tipo
+    # "el código corre solo" (p. ej. un conftest.py), donde el payload de texto no basta.
+    files: list[str] = []
     targets: list[str] = []            # carriles del estado del arte a los que apunta
     notes: str = ""
     references: list[str] = []
@@ -54,3 +61,24 @@ def load_attacks(path: Path) -> dict[str, CatalogAttack]:
 def render(payload: str, attacker_url: str) -> str:
     host = urlparse(attacker_url).hostname or attacker_url
     return payload.replace("{ATTACKER_URL}", attacker_url.rstrip("/")).replace("{ATTACKER_HOST}", host)
+
+
+def injected_files(catalog_dir: Path, attack: CatalogAttack, attacker_url: str) -> dict[str, bytes]:
+    """Lee los archivos que el ataque inyecta en el repo, desde attacks/files/<id>/.
+
+    Valida que ninguno escriba `.env`, `.git` ni archivos de control, y reemplaza los
+    marcadores en los de texto. Los binarios pasan tal cual.
+    """
+    base = catalog_dir / "files" / attack.id
+    out: dict[str, bytes] = {}
+    for rel in attack.files:
+        parts = PurePosixPath(rel).parts
+        if not parts or ".." in parts or parts[0] in _FORBIDDEN:
+            raise ValueError(f"el ataque {attack.id} no puede inyectar {rel!r}")
+        data = (base / rel).read_bytes()
+        try:
+            data = render(data.decode("utf-8"), attacker_url).encode("utf-8")
+        except UnicodeDecodeError:
+            pass
+        out[rel] = data
+    return out

@@ -4,14 +4,15 @@ Lo usan el escaneo del diff del gemelo bajo, FIDES (salida de herramientas),
 la atribución de lo que llega al atacante y el redactor de eventos.
 
 Cubre: claro, base64 estándar y url-safe (con y sin padding, tres alineaciones),
-hex en minúsculas y mayúsculas, url-encoding y fragmentos en claro.
-Lo demás (rot13, XOR, cifrado) es un límite declarado.
+hex en minúsculas y mayúsculas, url-encoding, rot13 y fragmentos en claro.
+Lo demás (XOR, cifrado) es un límite declarado.
 """
 
 from __future__ import annotations
 
 import base64
 import binascii
+import codecs
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -55,6 +56,9 @@ def variants(value: str) -> tuple[tuple[str, str], ...]:
     q = quote(value, safe="")
     if q != value:
         forms.append(("url", q))
+    r13 = codecs.encode(value, "rot13")
+    if r13 != value:
+        forms.append(("rot13", r13))
     seen: set[str] = set()
     uniq = []
     for enc, f in forms:
@@ -136,3 +140,68 @@ def redact(text: str, secrets: Iterable[tuple[str, str]]) -> str:
         if form in text:
             text = text.replace(form, f"[[{sid}]]")
     return text
+
+
+# ---------- fragmentos repartidos en varias peticiones ----------
+
+_TOKEN = re.compile(r"[A-Za-z0-9+/_\-]{4,}")
+_HEXCHARS = set("0123456789abcdefABCDEF")
+
+
+def tokens_of(texts: Iterable[str]) -> list[str]:
+    """Tokens candidatos a ser un trozo de secreto (sin repetir), de un payload y sus capas."""
+    seen: dict[str, None] = {}
+    for t in texts:
+        for tok in _TOKEN.findall(t or ""):
+            seen.setdefault(tok, None)
+    return list(seen)
+
+
+def ngrams(values: Iterable[str], n: int) -> set[str]:
+    """Todos los n-gramas de los valores dados."""
+    return {v[i : i + n] for v in values for i in range(len(v) - n + 1)}
+
+
+def candidate_tokens(tokens: Iterable[str], grams: set[str], n: int, max_len: int) -> list[str]:
+    """Tokens que comparten un n-grama con algún secreto y no pasan de `max_len`.
+
+    Un token más largo que eso o trae el secreto entero (lo encuentra `find`) o es ruido.
+    """
+    if not grams:
+        return []
+    return [t for t in tokens
+            if n <= len(t) <= max_len and any(t[i : i + n] in grams for i in range(len(t) - n + 1))]
+
+
+def fragment_min_len(value: str, base: int = 4, hex_min: int = 8) -> int:
+    """Largo mínimo de un trozo. Un secreto solo hex coincide por azar con mucho más texto."""
+    return max(base, hex_min) if value and set(value) <= _HEXCHARS else base
+
+
+def fragment_coverage(value: str, payloads: list[list[str]], min_len: int) -> tuple[float, list[int]]:
+    """Qué fracción de `value` cubren trozos de largo >= min_len vistos en `payloads`.
+
+    `payloads`: tokens de cada petición, en orden. Devuelve (cobertura 0..1, índices de las
+    peticiones que aportaron). Un trozo cuenta si es subcadena de `value` (o lo contiene en
+    parte, como `k=AKIA12`), con el bloque común más largo de al menos min_len.
+    """
+    import difflib
+
+    if not value or len(value) < min_len:
+        return 0.0, []
+    grams = {value[i : i + min_len] for i in range(len(value) - min_len + 1)}
+    covered = [False] * len(value)
+    contrib: list[int] = []
+    for idx, toks in enumerate(payloads):
+        hit = False
+        for tok in toks:
+            if len(tok) < min_len or not any(tok[i : i + min_len] in grams for i in range(len(tok) - min_len + 1)):
+                continue
+            sm = difflib.SequenceMatcher(None, value, tok, autojunk=False)
+            for b in sm.get_matching_blocks():
+                if b.size >= min_len:
+                    covered[b.a : b.a + b.size] = [True] * b.size
+                    hit = True
+        if hit:
+            contrib.append(idx)
+    return sum(covered) / len(value), contrib

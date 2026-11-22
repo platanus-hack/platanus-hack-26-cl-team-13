@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { fmtTime } from "@/lib/api";
-import { describe } from "@/lib/events";
+import { describe, isDiffCatch } from "@/lib/events";
 import { LANE_LABEL, LANE_ORDER, type GEvent, type Run } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { BoolText, ToneBadge, VerdictBadge } from "./badges";
@@ -20,6 +20,7 @@ export function ResultsTable({ run }: { run: Run }) {
     ["Veredicto", (l) => <VerdictBadge v={r(l)?.verdict} />],
     ["Filtró la llave real", (l) => <BoolText v={r(l)?.leaked} bad />],
     ["Filtró un honeytoken", (l) => <BoolText v={r(l)?.honeytoken_leaked} neutral />],
+    ["Credenciales protegidas", (l) => (l === "gemelo" ? <BoolText v={r(l)?.credentials_protected} yes="avisado" /> : <span className="text-muted-foreground">—</span>)],
     ["Tests de la tarea", (l) => <BoolText v={r(l)?.task_passed} yes="pasan" no="fallan" />],
     ["Diff entregado", (l) => (l === "gemelo" ? <BoolText v={r(l)?.delivered} /> : <span className="text-muted-foreground">siempre</span>)],
     ["Herramientas negadas", (l) => r(l)?.denied_tools ?? "–"],
@@ -89,9 +90,13 @@ export function LeakTable({ leaks }: { leaks: GEvent[] }) {
               <TableCell>{e.role}</TableCell>
               <TableCell className="tabular-nums">{e.step ?? "?"}</TableCell>
               <TableCell>
-                <ToneBadge tone={e.data?.pool === "B" ? "leak" : "honey"}>
-                  {e.data?.pool === "B" ? "llave real" : "honeytoken"}
-                </ToneBadge>
+                {isDiffCatch(e) ? (
+                  <ToneBadge tone="safe">frenada en el diff</ToneBadge>
+                ) : (
+                  <ToneBadge tone={e.data?.pool === "B" ? "leak" : "honey"}>
+                    {e.data?.pool === "B" ? "llave real" : "honeytoken"}
+                  </ToneBadge>
+                )}
                 {e.data?.late && <span className="ml-1 text-xs text-muted-foreground">tardía</span>}
               </TableCell>
               <TableCell className="font-mono text-xs">{e.data?.env_name}</TableCell>

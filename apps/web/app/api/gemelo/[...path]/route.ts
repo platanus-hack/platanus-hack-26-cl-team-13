@@ -3,12 +3,13 @@
 
 import { cookies } from "next/headers";
 import { COOKIE, validSession } from "@/lib/auth";
+import { withPing } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Rutas de operación que el panel puede usar; lo demás (hooks, webhooks) no pasa por acá
-const ALLOWED = /^(health|tasks|lanes|attacks|queue|runs(\/[A-Za-z0-9_]+(\/(events|cancel|lanes\/[a-z_]+\/diff))?)?)$/;
+const ALLOWED = /^(health|tasks|lanes|attacks|queue|budget|runs(\/[A-Za-z0-9_]+(\/(events|cancel|chain|usage|lanes\/[a-z_]+\/diff))?)?)$/;
 
 async function forward(req: Request, ctx: { params: Promise<{ path: string[] }> }) {
   // El middleware ya lo revisa; se repite acá para no depender de una sola capa
@@ -51,44 +52,6 @@ async function forward(req: Request, ctx: { params: Promise<{ path: string[] }> 
     return new Response(withPing(upstream.body), { status: upstream.status, headers: out });
   }
   return new Response(upstream.body, { status: upstream.status, headers: out });
-}
-
-// Comentario SSE cada 15 s: el orquestador calla mientras corren tests o espera filtraciones,
-// y los proxies del host cortan conexiones ociosas. Solo se mete entre eventos: un trozo del
-// upstream puede cortar un evento a la mitad, y un ping ahí rompería su JSON.
-function withPing(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
-  const ping = new TextEncoder().encode(": ping\n\n");
-  const reader = body.getReader();
-  let timer: ReturnType<typeof setInterval>;
-  // Últimos dos bytes enviados; "\n\n" marca el fin de un evento
-  let tail = [10, 10];
-  return new ReadableStream({
-    start(ctrl) {
-      timer = setInterval(() => {
-        if (tail[0] !== 10 || tail[1] !== 10) return;
-        try {
-          ctrl.enqueue(ping);
-        } catch {
-          clearInterval(timer);
-        }
-      }, 15000);
-    },
-    async pull(ctrl) {
-      const { value, done } = await reader.read();
-      if (done) {
-        clearInterval(timer);
-        ctrl.close();
-        return;
-      }
-      if (value.length >= 2) tail = [value[value.length - 2], value[value.length - 1]];
-      else if (value.length === 1) tail = [tail[1], value[0]];
-      ctrl.enqueue(value);
-    },
-    cancel(reason) {
-      clearInterval(timer);
-      return reader.cancel(reason);
-    },
-  });
 }
 
 export const GET = forward;

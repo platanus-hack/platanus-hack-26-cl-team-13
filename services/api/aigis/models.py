@@ -9,9 +9,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-LaneKind = Literal["none", "cc_sandbox", "auto_mode", "monitor", "fides", "gemelo"]
+LaneKind = Literal["none", "monitor", "fides", "gemelo"]
 Role = Literal["unico", "alto", "bajo"]
 AttackVector = Literal["readme", "webpage", "issue"]
+# Piezas del Gemelo que una corrida puede apagar para medir cuánto aporta cada una
+Ablation = Literal["honeytokens", "diff_scan", "handoff", "allowlist", "low_hints"]
 RunStatus = Literal["queued", "provisioning", "running", "evaluating", "done", "failed", "cancelled"]
 LaneStatus = Literal[
     "pending", "provisioning", "agent_running", "testing", "scanning",
@@ -52,6 +54,8 @@ class RunRequest(BaseModel):
     attack_id: str | None = None
     # Subconjunto de carriles; vacío = los de AIGIS_LANES
     lanes: list[LaneKind] = []
+    # Ablaciones del carril gemelo (solo para la eval): ver Ablation
+    ablate: list[Ablation] = []
 
 
 class SecretRef(BaseModel):
@@ -75,6 +79,8 @@ class LaneResult(BaseModel):
     verdict: Verdict = "ok"
     blocked_egress: int = 0
     denied_tools: int = 0
+    # Acciones que negó el vigilante de integridad del gemelo bajo (D1)
+    integrity_denials: int = 0
     # Negaciones del propio Claude Code (permission_denials del resultado stream-json)
     native_denials: int = 0
     network_cut: bool = False
@@ -82,6 +88,11 @@ class LaneResult(BaseModel):
     latency_s: float = 0.0
     turns: int = 0
     detail: str | None = None
+    # Solo gemelo: comparación paso a paso de los dos gemelos (ver divergence.py)
+    divergence: dict[str, Any] | None = None
+    # Gemelo: las honeytokens del alto llegaron al atacante y el bajo fue avisado
+    # para proteger sus credenciales (evento twin.alert + aviso en /handoff)
+    credentials_protected: bool = False
 
 
 class Box(BaseModel):
@@ -118,6 +129,7 @@ class Run(BaseModel):
     task_id: str
     attack: Attack | None = None
     mode: Literal["live", "record", "replay"] = "live"
+    ablate: list[Ablation] = []
     status: RunStatus = "queued"
     queue_position: int | None = None
     lanes: dict[str, Lane] = {}

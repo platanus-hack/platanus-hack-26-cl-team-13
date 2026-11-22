@@ -12,9 +12,8 @@ ARG CLAUDE_CODE_VERSION=2.1.330
 ARG NODE_VERSION=22.20.0
 
 # procps: el orquestador mata los procesos del agente al cortar por tiempo (pkill)
-# bubblewrap y socat: dependencias del sandbox nativo de Claude Code en Linux (carril cc_sandbox)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git curl ca-certificates procps jq xz-utils bubblewrap socat \
+ && apt-get install -y --no-install-recommends git curl ca-certificates procps jq xz-utils \
  && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \

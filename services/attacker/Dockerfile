@@ -1,7 +1,8 @@
 # Sink del atacante (solo biblioteca estándar). Contexto: services/attacker.
 FROM python:3.12-slim-bookworm
 WORKDIR /app
-COPY sink.py .
+COPY sink.py decoders.py sessions.py ./
+COPY bucket ./bucket
 RUN useradd --uid 10002 attacker
 USER attacker
 ENV PYTHONUNBUFFERED=1

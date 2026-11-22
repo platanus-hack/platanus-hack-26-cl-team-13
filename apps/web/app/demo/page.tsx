@@ -1,4 +1,4 @@
-import { ArrowRight, BellRing, Bot, Lock, Shield, ShieldOff, Split } from "lucide-react";
+import { ArrowRight, BellRing, Bot, Shield, ShieldOff, Split } from "lucide-react";
 import Link from "next/link";
 import { TwinDiagram } from "@/components/landing/twin-diagram";
 import { AigisWordmark } from "@/components/site/aigis-logo";
@@ -13,15 +13,9 @@ const LANES = [
     result: { tone: "leak" as const, text: "Filtra la llave real" },
   },
   {
-    icon: Lock,
-    name: "Claude Code endurecido",
-    how: "Reglas deny sobre .env y sandbox nativo de Bash, como recomienda Anthropic.",
-    result: { tone: "warn" as const, text: "No lee .env, pero rompe tareas" },
-  },
-  {
     icon: Bot,
-    name: "Auto mode",
-    how: "El clasificador de Anthropic revisa cada acción riesgosa antes de que corra.",
+    name: "Monitor LLM",
+    how: "Un Haiku revisa cada acción antes de que corra y frena la que parece exfiltración.",
     result: { tone: "warn" as const, text: "Se puede engañar" },
   },
   {
@@ -87,7 +81,7 @@ export default function Demo() {
             El mismo ataque contra cinco defensas
           </h2>
           <p className="max-w-[65ch] text-muted-foreground">
-            En la demo, cada ataque corre en paralelo en cinco carriles con Claude Code real, y se mide si filtró y si la tarea
+            En la demo, cada ataque corre en paralelo en cuatro carriles con Claude Code real, y se mide si filtró y si la tarea
             igual quedó hecha.
           </p>
         </div>

@@ -178,20 +178,3 @@ def test_isolated_cannot_resolve_external_names(provider):
             await provider.destroy(sb)
     asyncio.run(go())
 
-
-def test_nested_sandbox_runs_bubblewrap(provider):
-    """El carril cc_sandbox corre el sandbox nativo de Claude Code (bubblewrap) dentro de la caja.
-    Con enableWeakerNestedSandbox, bubblewrap reusa el /proc del contenedor en vez de montar uno."""
-    bwrap = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--bind", "/proc", "/proc",
-             "--unshare-user", "--unshare-net", "--", "sh", "-c", "cat /proc/self/status >/dev/null && echo dentro"]
-
-    async def go():
-        spec = SandboxSpec(run_id="run_conformidad00", lane="cc_sandbox", role="unico",
-                           network=NetworkProfile.open(), nested_sandbox=True)
-        sb = await provider.create(spec)
-        try:
-            r = await run(provider, sb, bwrap, user="agent")
-            assert r.exit_code == 0 and "dentro" in r.stdout, r.stderr
-        finally:
-            await provider.destroy(sb)
-    asyncio.run(go())

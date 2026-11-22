@@ -41,6 +41,9 @@ services:
     dockerfilePath: ./services/api/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    # Construye la plantilla E2B de este código si falta (aigis-sandbox-<hash de sandbox/>).
+    # Sin cambios en sandbox/ termina en segundos; si falla, el deploy se cancela.
+    preDeployCommand: python -m aigis.providers.e2b_template
     autoDeploy: true
     envVars:
       - key: AIGIS_SANDBOX_PROVIDER
@@ -71,6 +74,9 @@ services:
       - key: AIGIS_WEBHOOK_SECRET
         generateValue: true
       - key: AIGIS_API_TOKEN
+        generateValue: true
+      # Firma los tokens de jueces; links con: python -m aigis.judges <alias>... en el shell del servicio
+      - key: AIGIS_JUDGE_SECRET
         generateValue: true
       - key: AIGIS_CORS_ORIGINS
         sync: false          # URL de la web de P4

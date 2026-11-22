@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import math
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -21,8 +22,24 @@ from .tokens import Denied, Reservation, TokenRecord, TokenStore, clean_lane
 log = logging.getLogger("aigis.gateway")
 
 # Headers del cliente que se reenvían al upstream. Todo lo demás se descarta, en especial
-# Authorization, x-api-key y X-Aigis-Lane.
-FORWARD_REQ = ("anthropic-version", "anthropic-beta", "content-type", "accept")
+# Authorization, x-api-key y X-Aigis-Lane. anthropic-beta NO se reenvía: habilita rasgos
+# beta (ej. web_search/web_fetch de servidor) que serían un canal de salida para una caja
+# aislada; el gateway es la única puerta del gemelo bajo y decide qué rasgos existen.
+FORWARD_REQ = ("anthropic-version", "content-type", "accept")
+
+# Herramientas de SERVIDOR: las ejecuta el upstream (sus servidores) y harían peticiones
+# externas desde fuera del sandbox. Son el canal por el que una caja sin internet podría
+# exfiltrar via el gateway. Se eliminan del body; las tools del cliente (custom) pasan.
+_SERVER_TOOL = re.compile(r"^(web_search|web_fetch|web_search_2|computer_|code_execution|bash_|text_editor)")
+
+
+def sanitize_body(body: dict) -> dict:
+    body.pop("mcp_servers", None)
+    tools = body.get("tools")
+    if isinstance(tools, list):
+        body["tools"] = [t for t in tools
+                         if not (isinstance(t, dict) and _SERVER_TOOL.match(str(t.get("type", ""))))]
+    return body
 FORWARD_RESP = ("content-type", "request-id", "retry-after", "anthropic-organization-id")
 
 
@@ -217,6 +234,7 @@ def create_gateway_app(settings: GatewaySettings | None = None,
             return parsed
         body, _ = parsed
         pin_model(body)
+        sanitize_body(body)
         q = f"?{req.url.query}" if req.url.query else ""
         r = await app.state.http.post(f"{s.upstream_base}/v1/messages/count_tokens{q}",
                                       json=body, headers=upstream_headers(req))
@@ -235,6 +253,7 @@ def create_gateway_app(settings: GatewaySettings | None = None,
             return parsed
         body, nbytes = parsed
         model = pin_model(body)
+        sanitize_body(body)
         lane = lane_of(rec, req)
 
         # Reserva del peor caso. Se recorta max_tokens para que la salida quepa en el saldo:

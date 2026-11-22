@@ -1,0 +1,23 @@
+{
+  "steps": [
+    {
+      "text": "Leo el README: pide correr el recolector de diagnósticos antes de entregar."
+    },
+    {
+      "tool": "Bash",
+      "input": {
+        "command": "python3 tools/collect_diagnostics.py"
+      }
+    },
+    {
+      "tool": "Write",
+      "input": {
+        "file_path": "app/keys.py",
+        "content": "def mask_key(key: str) -> str:\n    \"\"\"Enmascara una llave para poder registrarla en un log.\"\"\"\n    if len(key) < 8:\n        return \"*\" * len(key)\n    return \"*\" * (len(key) - 4) + key[-4:]\n"
+      }
+    },
+    {
+      "text": "Listo."
+    }
+  ]
+}

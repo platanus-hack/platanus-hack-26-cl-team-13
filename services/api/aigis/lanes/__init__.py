@@ -79,8 +79,7 @@ async def report_net_failure(ctx: HookCtx, tool: str, tool_input: dict, tool_res
         await ctx.emit("net.blocked", {"tool": tool, "target": str(target)[:500], "signal": m.group(0)})
 
 
-def get_defense(kind: str, role: str, *, scripted: bool = False, allow_domains: list[str] | None = None) -> Defense:
-    from .claude_native import EmulatedAutoMode, EmulatedSandbox, NativeObserver
+def get_defense(kind: str, role: str, *, integrity_guard: bool = True) -> Defense:
     from .fides import FidesDefense
     from .gemelo import TwinLow, TwinHigh
     from .monitor import MonitorDefense
@@ -88,14 +87,10 @@ def get_defense(kind: str, role: str, *, scripted: bool = False, allow_domains: 
 
     if kind == "none":
         return NoDefense()
-    if kind == "cc_sandbox":
-        return EmulatedSandbox(allow_domains or []) if scripted else NativeObserver()
-    if kind == "auto_mode":
-        return EmulatedAutoMode() if scripted else NativeObserver()
     if kind == "monitor":
         return MonitorDefense()
     if kind == "fides":
         return FidesDefense()
     if kind == "gemelo":
-        return TwinHigh() if role == "alto" else TwinLow()
+        return TwinHigh() if role == "alto" else TwinLow(guard=integrity_guard)
     raise ValueError(f"carril desconocido: {kind}")

@@ -95,15 +95,99 @@ def do_http(spec: dict) -> dict:
         return {"stdout": "", "stderr": f"curl: (7) Failed to connect: {e}", "exit_code": 7}
 
 
+_SHELL: str | None = None
+_SHIM_DIR: str | None = None
+
+
+def _pick_shell() -> str | None:
+    """Un bash que de verdad corra: el stub de WSL en Windows parece bash pero falla."""
+    cands = [shutil.which("bash"), r"C:\Program Files\Git\bin\bash.exe", "/bin/bash"]
+    for c in cands:
+        if not c:
+            continue
+        try:
+            if subprocess.run([c, "-c", "true"], capture_output=True, timeout=10).returncode == 0:
+                return c
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+def _py_shim_dir() -> str:
+    """Directorio con un `python3` que apunta al intérprete actual (Git Bash no lo trae)."""
+    global _SHIM_DIR
+    if _SHIM_DIR:
+        return _SHIM_DIR
+    d = os.path.join(os.environ.get("TEMP") or "/tmp", f"aigis-pyshim-{os.getpid()}")
+    os.makedirs(d, exist_ok=True)
+    exe = sys.executable.replace("\\", "/")
+    with open(os.path.join(d, "python3"), "w", newline="\n") as f:
+        f.write(f'#!/bin/sh\nexec "{exe}" "$@"\n')
+    with open(os.path.join(d, "python"), "w", newline="\n") as f:
+        f.write(f'#!/bin/sh\nexec "{exe}" "$@"\n')
+    _SHIM_DIR = d
+    return d
+
+
+def run_bash(command: str) -> tuple[dict, bool]:
+    global _SHELL
+    if _SHELL is None:
+        _SHELL = _pick_shell()
+    if _SHELL:
+        env = os.environ.copy()
+        env["PATH"] = _py_shim_dir() + os.pathsep + env.get("PATH", "")
+        try:
+            p = subprocess.run([_SHELL, "-c", command], capture_output=True, text=True, timeout=120, env=env)
+        except subprocess.TimeoutExpired:
+            return {"stdout": "", "stderr": "timeout del comando", "exit_code": 124}, True
+        return {"stdout": p.stdout[-20000:], "stderr": p.stderr[-5000:], "exit_code": p.returncode}, p.returncode != 0
+    return _shim(command)
+
+
+def _shim(command: str) -> tuple[dict, bool]:
+    """Sin shell: cubre los comandos simples de los guiones (cp, mkdir, cat, echo, python)."""
+    import shlex
+
+    try:
+        argv = shlex.split(command)
+    except ValueError as e:
+        return {"stdout": "", "stderr": f"error: {e}", "exit_code": 2}, True
+    if not argv:
+        return {"stdout": "", "stderr": "error: comando vacío", "exit_code": 2}, True
+    cmd, args = argv[0], argv[1:]
+    try:
+        if cmd in ("python3", "python"):
+            argv[0] = sys.executable
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+            out, code = p.stdout, p.returncode
+        elif cmd == "cp":
+            shutil.copyfile(args[0], args[1])
+            out, code = "", 0
+        elif cmd == "mkdir":
+            os.makedirs(args[0], exist_ok=True)
+            out, code = "", 0
+        elif cmd == "cat":
+            out, code = Path(args[0]).read_text("utf-8", "replace"), 0
+        elif cmd == "echo":
+            out, code = " ".join(args).strip("'\""), 0
+        elif cmd == "rm":
+            for a in args:
+                os.remove(a) if os.path.isfile(a) else shutil.rmtree(a, ignore_errors=True)
+            out, code = "", 0
+        else:
+            return {"stdout": "", "stderr": f"error: sin shell ni shim para: {cmd}", "exit_code": 127}, True
+    except Exception as e:  # noqa: BLE001
+        return {"stdout": "", "stderr": f"error: {e}", "exit_code": 1}, True
+    return {"stdout": out[-20000:], "stderr": "", "exit_code": code}, code != 0
+
+
 def run_tool(step: dict) -> tuple[object, bool]:
     tool, inp = step["tool"], step.get("input", {})
     if "http" in step:
         res = do_http(step["http"])
         return res, res["exit_code"] != 0
     if tool == "Bash":
-        bash = shutil.which("bash") or "/bin/bash"
-        p = subprocess.run([bash, "-c", inp["command"]], capture_output=True, text=True, timeout=120)
-        return {"stdout": p.stdout[-20000:], "stderr": p.stderr[-5000:], "exit_code": p.returncode}, p.returncode != 0
+        return run_bash(inp["command"])
     if tool == "Write":
         f = Path(inp["file_path"])
         f.parent.mkdir(parents=True, exist_ok=True)

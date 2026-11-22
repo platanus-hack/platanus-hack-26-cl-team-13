@@ -17,7 +17,13 @@ Solo `/` y `/login` son públicas. Todo lo demás vive bajo `/demo` y el middlew
 | `/demo/panel` | Sesión | Salud del orquestador, lanzar, cola, historial y comando para grabar una corrida |
 | `/demo/runs/[id]` | Sesión | Corrida en vivo (`/demo/panel/runs/[id]` redirige aquí) |
 
-La vista de corrida (`components/run/run-view.tsx`) es la misma para vivo y grabación: solo recibe `run`, `events` y `diffs`.
+La vista de corrida (`components/run/run-view.tsx`) es la misma para vivo y grabación: recibe `run`, `events`, `diffs` y, si la hay, la cadena del ataque (`GET /runs/{id}/chain`). Sus pestañas:
+
+- **Cadena**: por carril, hasta dónde llegó el ataque (leyó lo no confiable → tocó secretos → codificó → intentó salir) y cómo terminó. En vivo se pide al terminar y otra vez si llega una filtración tardía.
+- **Gemelos**: `result.divergence` del carril AIgis: similitud, dónde se separan los gemelos y por qué, y la fuga contrafactual (lo que el bajo habría sacado sin aislamiento).
+- Si la corrida vino con ablaciones (`ablate`), el encabezado las muestra. El panel del equipo las puede pedir al lanzar; la vitrina no.
+
+Un `leak.detected` con `source: "scanner"` es el escáner del diff frenando un secreto antes de entregar: no cuenta como filtración (ni en las cajas, ni en "lo que le llegó al atacante", ni en los contadores). Se ve como "frenado en el diff".
 
 ## Cómo habla con el orquestador
 
@@ -29,7 +35,7 @@ La sesión es una cookie httpOnly firmada con `PANEL_SECRET` (HMAC, 3 días). La
 
 ## Grabaciones
 
-Una grabación es un JSON estático en `public/replays/<id>.json` con el run final, todos los eventos y el diff de cada carril. No confundir con el modo `replay` del gateway, que reejecuta desde `cassettes/` y necesita la API.
+Una grabación es un JSON estático en `public/replays/<id>.json` con el run final, todos los eventos, el diff de cada carril y la cadena del ataque (`chain`, si la API la tiene; se muestra al terminar la reproducción). No confundir con el modo `replay` del gateway, que reejecuta desde `cassettes/` y necesita la API.
 
 ```bash
 # desde la raíz, con la API corriendo y la corrida terminada

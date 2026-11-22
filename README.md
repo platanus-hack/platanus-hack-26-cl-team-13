@@ -4,6 +4,8 @@
 
 **Agentes de IA que no pueden robar tus secretos.** Platanus Hack 26: Santiago ft. Buk · Track 🛡️ AI Security · team-13
 
+**Demo:** https://aigislabs.dev/
+
 - Martin Rojas Cornejo ([@nachoroas](https://github.com/nachoroas))
 - Nicolás Rodrigo Arancibia Aguirre ([@nicoaranc](https://github.com/nicoaranc))
 - Martin Bahamonde ([@Asterix265](https://github.com/Asterix265))
@@ -33,18 +35,20 @@ flowchart LR
 
 ```
 services/api/aigis/     orquestador (paquete interno "gemelo")
-  providers/             local (Docker), e2b, fake
+  providers/             local (Docker), remote (VM con gVisor), e2b, fake
   lanes/                 none, monitor, fides, gemelo
   gateway/               proxy al modelo: live / record / replay, topes
   scanner.py · leaks.py  escaneo del diff y detección de filtraciones
   integrity.py           vigilante de integridad del gemelo bajo
+  sandbox_host.py        API que corre las cajas en la VM (provider remote)
 services/attacker/       sink público + decodificadores
 sandbox/                 imagen con Claude Code, hooks y agente con guion
 egress_proxy/            proxy de salida para el provider local
 tasks/                   tareas del benchmark (repo, tests, secretos)
-apps/web/                Next.js: playground, replay y resultados
+attacks/                 catálogo de ataques y matriz ataque × carril
+apps/web/                Next.js: landing en /, demo con login en /demo
 openspec/                specs y cambios
-eval/ · cassettes/ · results/
+docs/ · eval/ · cassettes/
 ```
 
 ## Inicio rápido
@@ -62,7 +66,7 @@ pnpm --dir apps/web dev
 
 ## Deploy
 
-URL pública: pendiente.
+URL pública: https://aigislabs.dev (Render, servicios en `render.yaml`). Las cajas corren en una VM de Proxmox con gVisor: ver [`docs/infra-vm-demo-proxmox.md`](docs/infra-vm-demo-proxmox.md).
 
 Render no se conecta a repos de la organización: el deploy sale de un repo espejo personal, con push doble desde `origin`:
 
